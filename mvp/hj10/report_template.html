@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HJ10 · 仓库维护教学演示</title>
+  <style>
+    :root{color-scheme:light;--ink:#172c37;--muted:#5c6e77;--line:#dbe3e7;--paper:#fff;--canvas:#f3f6f7;--accent:#116f79;--ok:#226849;--bad:#a34232;--warm:#925911}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}button,summary{font:inherit}button{cursor:pointer}button:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid #44b6c2;outline-offset:3px}.shell{max-width:1200px;margin:auto;padding:36px 24px 52px}.eyebrow{font-size:12px;letter-spacing:.14em;font-weight:750;color:var(--accent)}h1{font-size:clamp(26px,4vw,38px);letter-spacing:-.035em;line-height:1.25;margin:10px 0 18px}h2{font-size:21px;line-height:1.35;margin:0 0 12px}h3{font-size:15px;margin:0 0 9px}p{margin:0 0 12px}p:last-child{margin-bottom:0}.muted{color:var(--muted)}.notice{display:inline-block;border:1px solid #afd0d4;background:#e8f3f4;border-radius:8px;padding:8px 12px;font-size:13px;color:#175d65;margin-bottom:16px}.task{max-width:920px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:24px 0}.metric{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}.metric-label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}.metric-value{font-size:23px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}.metric-value.status{font-size:20px}.metric-note{font-size:12px;color:var(--muted);margin-top:5px}.workspace{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start}.panel{background:var(--paper);border:1px solid var(--line);border-radius:14px;min-width:0;overflow:hidden}.panel-head{padding:18px 20px;border-bottom:1px solid var(--line)}.panel-head h2{font-size:16px;margin:0}.steps{padding:10px;display:grid;gap:5px;max-height:680px;overflow:auto}.step-button{display:flex;align-items:start;gap:10px;text-align:left;border:1px solid transparent;background:transparent;width:100%;padding:11px 10px;border-radius:8px;color:var(--ink);min-width:0}.step-button:hover{background:#f3f7f8}.step-button[aria-current="step"]{background:#eaf4f5;border-color:#a7cdd2}.step-number{flex:none;display:grid;place-items:center;width:25px;height:25px;border-radius:7px;background:#edf1f3;font-size:12px;font-weight:700}.step-button[aria-current="step"] .step-number{background:var(--accent);color:white}.step-name{font-size:13px;font-weight:650;display:block;overflow-wrap:anywhere}.step-tool{font-size:11px;color:var(--muted);display:block;overflow-wrap:anywhere}.step-mark{font-size:11px;margin-left:auto;flex:none;line-height:25px}.detail{padding:24px;min-width:0}.step-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin-bottom:10px}.tag{padding:2px 8px;border:1px solid var(--line);border-radius:5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--accent);overflow-wrap:anywhere;max-width:100%}.intent{border-left:3px solid #67aab3;background:#f1f7f8;padding:12px 14px;margin:18px 0 20px}.intent p{white-space:pre-wrap;overflow-wrap:anywhere}.label{font-size:12px;color:var(--muted);margin-bottom:5px;display:block}.section{margin-top:22px}.section:first-child{margin-top:0}pre{margin:0;border:1px solid var(--line);background:#f6f8f9;border-radius:8px;padding:14px;color:#253e49;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:470px;overflow:auto;tab-size:4}.code{background:#152b36;color:#e0edf1;border-color:#152b36}.diff{background:#f6faf8;color:#24513c}.input{max-height:220px}.subtle{font-size:12px;color:var(--muted);margin:8px 0 0}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}table{border-collapse:collapse;width:100%;font-size:12px;table-layout:fixed}th{text-align:left;background:#f3f6f7;font-weight:600;color:var(--muted)}th,td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}tr:last-child td{border-bottom:0}td:first-child{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}ol,ul{padding-left:22px;margin:0}li{padding:4px 0;overflow-wrap:anywhere}.test-counts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}.pill{display:inline-block;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:4px 9px;background:#f6f8f9}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warm)}.neutral{color:var(--muted)}.case{padding:12px 0;border-top:1px solid var(--line)}.case:first-child{border-top:0}.case-title{display:flex;gap:10px;align-items:start;justify-content:space-between}.case-name{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;min-width:0}.case-state{font-size:12px;flex:none}.case pre{margin-top:8px;max-height:260px}.navigator{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:16px 24px;border-top:1px solid var(--line);background:#fbfcfc}.nav-button{border:1px solid var(--line);border-radius:7px;background:white;color:var(--ink);padding:7px 13px}.nav-button:disabled{opacity:.4;cursor:default}.position{font-size:12px;color:var(--muted)}details{margin-top:16px}summary{cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0}details pre{margin-top:8px}.evaluation{margin-top:24px;padding:24px}.evaluation-intro{max-width:830px;color:var(--muted);font-size:13px}.eval-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}.eval-card{border:1px solid var(--line);border-radius:9px;padding:15px;min-width:0}.eval-result{font-size:20px;font-weight:700;margin:7px 0}.stop{font-size:13px;border-top:1px solid var(--line);padding-top:16px;margin-top:16px;overflow-wrap:anywhere}.footer{font-size:12px;color:var(--muted);margin-top:20px;overflow-wrap:anywhere}.empty{padding:18px 0;color:var(--muted)}.error-box{padding:12px 14px;border:1px solid #e4beb8;background:#fff3f1;border-radius:8px;color:var(--bad);white-space:pre-wrap;overflow-wrap:anywhere}.key{border:1px solid var(--line);padding:0 4px;border-radius:3px;font-size:11px}.check-note{font-size:12px;color:var(--muted);margin-top:10px}.line{display:block}.line.add{color:#267347}.line.remove{color:#a34232}.line.header{color:#527f96}.trace-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.trace-title span{font-size:11px;color:var(--muted);font-weight:400}
+    @media(max-width:760px){.shell{padding:22px 14px 36px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:20px 0}.metric{padding:13px}.metric-value{font-size:21px}.workspace{grid-template-columns:minmax(0,1fr);gap:14px}.steps{max-height:250px;grid-template-columns:repeat(2,minmax(0,1fr))}.step-button{padding:9px 7px;gap:7px}.step-mark{display:none}.detail,.evaluation{padding:18px}.eval-grid{grid-template-columns:minmax(0,1fr);gap:9px}.eval-card{padding:12px 14px}.eval-result{font-size:18px}.navigator{padding:14px 18px}.trace-title span{display:none}th,td{padding:8px}.case-title{flex-direction:column;gap:2px}}
+    @media(prefers-reduced-motion:no-preference){button{transition:background .15s,border-color .15s}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">HJ10 / TEACHING MVP</div>
+      <h1>一次仓库维护，怎样走完闭环</h1>
+      <div class="notice">预设决策 · 真实文件修改与测试 · 未接入模型</div>
+      <p class="task" id="task"></p>
+      <p class="muted" style="font-size:13px">这是已完成运行的离线记录。逐步查看“为什么做 → 执行什么 → 返回什么”，理解 Agent 控制流程。</p>
+    </header>
+    <section class="metrics" aria-label="运行概览">
+      <div class="metric"><span class="metric-label">控制流程状态</span><div class="metric-value status" id="overall-status"></div><div class="metric-note">独立验收结果见页尾</div></div>
+      <div class="metric"><span class="metric-label">实际操作步数</span><div class="metric-value" id="step-count"></div><div class="metric-note">每一步保留输入与反馈</div></div>
+      <div class="metric"><span class="metric-label">运行耗时</span><div class="metric-value" id="elapsed"></div><div class="metric-note">文件操作、测试与评测</div></div>
+      <div class="metric"><span class="metric-label">决策来源</span><div class="metric-value status">教学脚本</div><div class="metric-note">不能据此判断模型能力</div></div>
+    </section>
+    <div class="workspace">
+      <aside class="panel" aria-label="选择操作步骤">
+        <div class="panel-head trace-title"><h2>操作轨迹</h2><span>点击查看</span></div>
+        <nav class="steps" id="steps" aria-label="步骤列表"></nav>
+      </aside>
+      <section class="panel" aria-label="操作详情">
+        <div class="detail" id="detail" aria-live="polite"></div>
+        <div class="navigator"><button class="nav-button" id="previous" type="button">← 上一步</button><span class="position" id="position"></span><button class="nav-button" id="next" type="button">下一步 →</button></div>
+      </section>
+    </div>
+    <section class="panel evaluation" aria-labelledby="evaluation-title">
+      <h2 id="evaluation-title">独立评测 · 在维护流程结束后运行</h2>
+      <p class="evaluation-intro">验收检查与回归检查由评测器单独运行，结果不反馈给 Agent。此教学样例的验收代码随项目公开，用于解释评测边界；它不构成正式实验中的隐藏测试。</p>
+      <div class="eval-grid" id="evaluation"></div>
+      <div id="new-regressions"></div>
+      <div class="stop"><span class="label">停止原因</span><span id="stop-reason"></span></div>
+      <details><summary>查看最终补丁</summary><pre class="diff" id="final-diff"></pre></details>
+      <p class="check-note">预设脚本可展示工具链和恢复流程。真实模型的成功率、token 成本以及方案收益，需要接入模型后，在独立任务上另行测量。</p>
+    </section>
+    <footer class="footer"><p>本报告可直接用浏览器打开；无需联网、服务或第三方资源。键盘 <span class="key">←</span> <span class="key">→</span> 可切换步骤。</p><p id="run-dir"></p></footer>
+  </main>
+  <script type="application/json" id="report-data">__HJ10_REPORT_DATA__</script>
+  <script>
+    "use strict";
+    const payload = JSON.parse(document.getElementById("report-data").textContent);
+    const summary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
+    const events = Array.isArray(payload.events) ? payload.events : [];
+    const labels = {map_repository:"建立仓库地图",read_file:"阅读代码",find_symbol:"检索符号",plan:"规划修改",replace_text:"应用增量补丁",run_tests:"运行可见测试",finish:"请求结束"};
+    const states = {completed:"流程已完成",budget_exhausted:"预算耗尽",policy_failed:"策略执行失败",incomplete:"流程未完成",passed:"通过",failed:"失败",error:"错误",environment_error:"环境故障",test_load_error:"测试加载失败 · 原因待查",execution_timeout:"测试超时 · 原因待查",skipped:"跳过",expected_failure:"预期失败",unexpected_success:"意外通过"};
+    let selected = 0;
+    const has = (value) => value !== undefined && value !== null;
+    const str = (value, fallback="未记录") => !has(value) ? fallback : (typeof value === "string" ? value : JSON.stringify(value, null, 2));
+    const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const list = (value) => Array.isArray(value) ? value : [];
+    const statusLabel = (value) => states[value] || str(value);
+    const tone = (value) => value === "passed" || value === "completed" ? "ok" : value === "failed" || value === "error" || value === "policy_failed" ? "bad" : value === "environment_error" || value === "budget_exhausted" ? "warn" : "neutral";
+    function node(tag, text, className) {const item=document.createElement(tag);if(has(text))item.textContent=str(text,"");if(className)item.className=className;return item;}
+    function put(id, value) {document.getElementById(id).textContent=str(value);}
+    function code(parent, value, className="") {const pre=node("pre",value,className);parent.append(pre);return pre;}
+    function section(parent,title) {const container=node("section",null,"section");container.append(node("h3",title));parent.append(container);return container;}
+    function diff(parent,value) {const pre=node("pre",null,"diff");if(typeof value !== "string"){pre.textContent="未记录";}else{value.split("\n").forEach((line)=>{const kind=line.startsWith("@@")||line.startsWith("---")||line.startsWith("+++")?"header":line.startsWith("+")?"add":line.startsWith("-")?"remove":"";pre.append(node("span",line+"\n","line "+kind));});}parent.append(pre);}
+    function table(parent,headers,rows) {if(!rows.length){parent.append(node("p","未记录条目。","muted"));return;}const wrap=node("div",null,"table-wrap"),t=node("table"),head=node("thead"),hr=node("tr"),body=node("tbody");headers.forEach(h=>hr.append(node("th",h)));head.append(hr);rows.forEach(row=>{const tr=node("tr");row.forEach(value=>tr.append(node("td",str(value))));body.append(tr);});t.append(head,body);wrap.append(t);parent.append(wrap);}
+    function raw(parent,title,value) {const details=node("details"),caption=node("summary",title);details.append(caption);code(details,value);parent.append(details);}
+    function testResults(parent,observation) {
+      const state=node("p",statusLabel(observation.status),tone(observation.status));parent.append(state);
+      const counts=node("div",null,"test-counts");[["总计","total",""],["通过","passed","ok"],["失败","failed","bad"],["错误","errors","warn"],["跳过","skipped","warn"]].forEach(([title,key,color])=>{if(has(observation[key]))counts.append(node("span",title+" "+str(observation[key]),"pill "+color));});parent.append(counts);
+      const cases=list(observation.cases);
+      if(!cases.length)parent.append(node("p","未记录逐项测试结果。","muted"));
+      cases.forEach(test=>{const record=object(test),card=node("div",null,"case"),title=node("div",null,"case-title");title.append(node("span",str(record.name),"case-name"),node("span",statusLabel(record.status),"case-state "+tone(record.status)));card.append(title);if(has(record.detail)&&str(record.detail,"").trim())code(card,record.detail);parent.append(card);});
+      if(has(observation.output)&&str(observation.output,"").trim())raw(parent,"查看测试进程输出",observation.output);
+      if(["environment_error","test_load_error","execution_timeout"].includes(observation.status))parent.append(node("p","测试未能完成，需要根据日志检查环境或代码原因；不能直接归因。","subtle"));
+    }
+    function observationView(parent,tool,observation) {
+      if(has(observation.error))parent.append(node("div",observation.error,"error-box"));
+      switch(tool){
+        case "map_repository":table(parent,["文件","行数","符号 · 所在行"],list(observation.files).map(file=>{const f=object(file);return [f.path,f.lines,list(f.symbols).map(symbol=>{const s=object(symbol);return str(s.kind,"")+" "+str(s.name)+" · "+str(s.line);}).join("\n")||"未记录符号"]; }));break;
+        case "read_file":parent.append(node("p",observation.path,"subtle"));code(parent,observation.content,"code");break;
+        case "find_symbol":parent.append(node("p","检索目标："+str(observation.symbol),"muted"));parent.append(node("h3","定义"));table(parent,["记录"],list(observation.definitions).map(entry=>[str(entry)]));parent.append(node("h3","引用"));table(parent,["记录"],list(observation.references).map(entry=>[str(entry)]));break;
+        case "plan":{const items=list(observation.steps);if(!items.length){parent.append(node("p","未记录规划步骤。","muted"));break;}const ol=node("ol");items.forEach(item=>ol.append(node("li",item)));parent.append(ol);break;}
+        case "replace_text":parent.append(node("p",observation.path,"subtle"));if(has(observation.changed))parent.append(node("p",observation.changed===true?"补丁已写入文件。":"本次操作未写入修改。",observation.changed===true?"ok":"warn"));diff(parent,observation.diff);break;
+        case "run_tests":testResults(parent,observation);break;
+        case "finish":parent.append(node("p",typeof observation.accepted==="boolean"?(observation.accepted?"控制程序接受结束请求。":"控制程序拒绝结束请求。 "):"结束请求是否接受：未记录",observation.accepted===true?"ok":"neutral"));if(has(observation.reason))parent.append(node("p",observation.reason));parent.append(node("p","接受结束请求只表示流程停止；最终是否通过独立验收，请查看页尾。","subtle"));break;
+        default:code(parent,observation);
+      }
+    }
+    function eventMark(event){const observation=object(object(event).observation);if(has(observation.error))return ["错误","bad"];if(has(observation.status))return [statusLabel(observation.status),tone(observation.status)];return ["",""];}
+    function render(index){
+      selected=Math.max(0,Math.min(index,Math.max(0,events.length-1)));
+      document.querySelectorAll(".step-button").forEach((button,i)=>{if(i===selected)button.setAttribute("aria-current","step");else button.removeAttribute("aria-current");});
+      const detail=document.getElementById("detail");detail.replaceChildren();
+      document.getElementById("previous").disabled=!events.length||selected===0;document.getElementById("next").disabled=!events.length||selected===events.length-1;
+      put("position",events.length?String(selected+1)+" / "+events.length:"没有操作记录");
+      if(!events.length){detail.append(node("p","本次报告没有操作记录。","empty"));return;}
+      const event=object(events[selected]),action=object(event.action),observation=object(event.observation),tool=action.tool,meta=node("div",null,"step-meta");
+      meta.append(node("span","STEP "+str(event.step,String(selected+1))),node("span",str(tool),"tag"));if(has(event.phase))meta.append(node("span",event.phase));if(has(event.elapsed_ms))meta.append(node("span",str(event.elapsed_ms)+" ms"));detail.append(meta,node("h2",labels[tool]||str(tool,"操作详情")));
+      const intent=node("div",null,"intent");intent.append(node("span","教学目的 / 为什么做这一步","label"),node("p",event.intent));detail.append(intent);
+      const inputs=section(detail,"工具输入");code(inputs,action.args,"input");
+      const feedback=section(detail,"工具反馈");observationView(feedback,tool,observation);raw(detail,"查看原始反馈记录",observation);
+    }
+    put("task",summary.task);put("overall-status",statusLabel(summary.status));document.getElementById("overall-status").classList.add(tone(summary.status));put("step-count",has(summary.steps)?summary.steps:"未记录");put("elapsed",typeof summary.elapsed_seconds==="number"?summary.elapsed_seconds.toFixed(2)+" 秒":"未记录");put("stop-reason",summary.stop_reason);put("final-diff",summary.final_diff);put("run-dir",has(summary.run_dir)?"运行产物目录："+str(summary.run_dir):"运行产物目录：未记录");
+    const navigation=document.getElementById("steps");events.forEach((event,index)=>{const record=object(event),action=object(record.action),button=node("button",null,"step-button"),text=node("span"),mark=eventMark(record);button.type="button";button.append(node("span",String(index+1),"step-number"));text.append(node("span",labels[action.tool]||str(action.tool,"未记录操作"),"step-name"),node("span",action.tool,"step-tool"));button.append(text,node("span",mark[0],"step-mark "+mark[1]));button.addEventListener("click",()=>render(index));navigation.append(button);});if(!events.length)navigation.append(node("p","没有操作记录。","empty"));
+    const evaluation=object(summary.evaluation),evalRoot=document.getElementById("evaluation");[["需求验收",evaluation.requirements],["最终回归检查",evaluation.regressions],["修改前回归基准",evaluation.baseline_regressions]].forEach(([title,value])=>{const record=object(value),card=node("div",null,"eval-card");card.append(node("span",title,"label"),node("div",str(record.passed)+" / "+str(record.total)+" 通过","eval-result"),node("p","失败："+str(record.failed),"subtle"));evalRoot.append(card);});
+    const newRoot=document.getElementById("new-regressions");newRoot.append(node("p",typeof evaluation.passed==="boolean"?(evaluation.passed?"独立评测：通过":"独立评测：未通过"):"独立评测结论：未记录",evaluation.passed===true?"ok":evaluation.passed===false?"bad":"neutral"));if(Array.isArray(evaluation.new_regressions)){if(evaluation.new_regressions.length){newRoot.append(node("p","新增回归：","bad"));const ul=node("ul");evaluation.new_regressions.forEach(item=>ul.append(node("li",item)));newRoot.append(ul);}else newRoot.append(node("p","记录中的新增回归：0 项。","subtle"));}else newRoot.append(node("p","新增回归：未记录。","subtle"));
+    document.getElementById("previous").addEventListener("click",()=>render(selected-1));document.getElementById("next").addEventListener("click",()=>render(selected+1));document.addEventListener("keydown",event=>{if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.target.closest("input,textarea,select,[contenteditable=true]"))return;if(event.key==="ArrowLeft"){event.preventDefault();render(selected-1);}if(event.key==="ArrowRight"){event.preventDefault();render(selected+1);}});render(0);
+  </script>
+</body>
+</html>
