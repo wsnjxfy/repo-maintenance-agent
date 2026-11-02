@@ -53,7 +53,8 @@
     const payload = JSON.parse(document.getElementById("report-data").textContent);
     const summary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
     const events = Array.isArray(payload.events) ? payload.events : [];
-    const labels = {map_repository:"建立仓库地图",read_file:"阅读代码",find_symbol:"检索符号",plan:"规划修改",replace_text:"应用增量补丁",run_tests:"运行可见测试",finish:"请求结束"};
+    const fallbackLabels = {map_repository:"建立仓库地图",read_file:"阅读代码",find_symbol:"检索符号",plan:"规划修改",replace_text:"应用增量补丁",run_tests:"运行可见测试",finish:"请求结束"};
+    const labels = Object.assign({}, fallbackLabels, (payload && typeof payload.labels === "object" && payload.labels) || {});
     const states = {completed:"流程已完成",budget_exhausted:"预算耗尽",policy_failed:"策略执行失败",incomplete:"流程未完成",passed:"通过",failed:"失败",error:"错误",environment_error:"环境故障",test_load_error:"测试加载失败 · 原因待查",execution_timeout:"测试超时 · 原因待查",skipped:"跳过",expected_failure:"预期失败",unexpected_success:"意外通过"};
     let selected = 0;
     const has = (value) => value !== undefined && value !== null;

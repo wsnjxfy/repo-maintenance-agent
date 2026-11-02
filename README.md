@@ -1,8 +1,8 @@
 # Repository Maintenance Agent · HJ10
 
-一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环**。
+一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环**；**C1（接入真实模型）进行中，已跑通 1 次**。
 
-这版用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。**没有接入语言模型，不产生模型能力或方法提升的实验结论。**
+这版默认仍用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。加上 `--use-llm`（读 `.env`）或 `--model 名称` 可接入任何 OpenAI 兼容端点（DeepSeek、OpenAI、OpenRouter、Ollama 等）。单次成功只是管线证据，**不构成模型能力或方法优劣的结论**。
 
 ## 立即运行
 
@@ -10,6 +10,12 @@
 
 ```sh
 python mvp/run_demo.py --open
+```
+
+接入真实模型（任何 OpenAI 兼容端点，例如 DeepSeek、OpenAI、OpenRouter、本地 Ollama）。先在 `.env` 填好 `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（模板见 `.env.example`）：
+
+```sh
+python -B mvp/run_demo.py --use-llm --open
 ```
 
 Windows PowerShell 可使用包装脚本，它会寻找已有 Python（包括本机 Codex 提供的运行时）：
@@ -63,7 +69,8 @@ python mvp/run_demo.py --max-steps 3
 - `task.txt`：本轮任务说明。
 - `trajectory.jsonl`：每一步的意图、工具参数、实际反馈与耗时。
 - `final.patch`：初始代码到最终代码的统一 diff。
-- `summary.json`：停止状态、预算、评测和耗时；模型调用为 0，token 为 null。
+- `summary.json`：停止状态、模型调用次数、token 与费用、评测和耗时。
+- `llm_calls.jsonl`：仅模型运行；每次 API 调用的完整请求与原始响应（`--no-llm-log` 可关闭）。
 - `report.html`：可直接打开的中文轨迹浏览器。
 
 运行目录默认不提交到 Git。原始 fixture 里的测试会失败，这是任务的起点；维护系统自身的检查请运行：

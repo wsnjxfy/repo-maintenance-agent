@@ -1,8 +1,9 @@
-"""Test controller behavior, real recovery, and evaluation separation."""
+"""Test controller behavior, real recovery, evaluation separation, and the adapter."""
 
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -13,8 +14,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from hj10.agent import Action, Agent
+from hj10.llm import LLMPolicy, load_env, policy_from_env
 from hj10.report import write_report
-from hj10.tools import Tools, run_suite
+from hj10.tools import TOOL_SPECS, Tools, run_suite, tool_labels, tool_table
 from run_demo import FIXTURE, evaluate, run_demo
 
 
@@ -181,6 +183,183 @@ class TestReport(unittest.TestCase):
             embedded = html.split(marker, 1)[1].split("</script>", 1)[0]
             self.assertNotIn("<script>", embedded)
             self.assertEqual(json.loads(embedded)["summary"]["task"], content)
+
+
+class TestInterfaceContract(unittest.TestCase):
+    """Guard the v1 contracts recorded in docs/interfaces.md."""
+
+    REQUIRED_EVENT_FIELDS = {"step", "phase", "intent", "action", "observation", "elapsed_ms"}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        with contextlib.redirect_stdout(io.StringIO()):
+            cls.summary, cls.events, cls.run_dir = run_demo(cls.temp.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def test_trajectory_schema_matches_v1(self):
+        for event in self.events:
+            self.assertTrue(self.REQUIRED_EVENT_FIELDS <= set(event))
+            self.assertTrue({"tool", "args"} <= set(event["action"]))
+            self.assertIsInstance(event["elapsed_ms"], int)
+        self.assertEqual(self.summary["versions"],
+                         {"action": "v1", "tools": "v1", "prompt": "v1", "trajectory": "v1"})
+
+    def test_tool_catalog_is_the_single_source(self):
+        tools = Tools(self.run_dir / "workspace")
+        self.assertEqual(set(TOOL_SPECS), tools.allowed_tools)
+        self.assertEqual(set(TOOL_SPECS), set(tool_labels()))
+        table = tool_table()
+        for name, spec in TOOL_SPECS.items():
+            self.assertIn(name, table)
+            self.assertIn(spec["doc"], table)
+
+    def test_report_labels_come_from_the_catalog(self):
+        destination = Path(self.temp.name) / "labels.html"
+        write_report({"task": "labels"}, [], destination)
+        html = destination.read_text(encoding="utf-8")
+        marker = '<script type="application/json" id="report-data">'
+        embedded = html.split(marker, 1)[1].split("</script>", 1)[0]
+        self.assertEqual(json.loads(embedded)["labels"], tool_labels())
+
+    def test_malformed_tool_args_stop_with_error_observation(self):
+        class MissingArgsPolicy:
+            def next_action(self, history):
+                return Action("replace_text", {"path": "config.py"})
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            history, status, _ = Agent(Tools(self.run_dir / "workspace")).run(
+                MissingArgsPolicy(), Path(self.temp.name) / "bad-args.jsonl")
+        self.assertEqual(status, "policy_failed")
+        self.assertEqual(len(history), 1)
+        self.assertIn("error", history[0]["observation"])
+
+
+class TestLLMPolicy(unittest.TestCase):
+    """Adapter behavior with a fake transport; no network is touched."""
+
+    @staticmethod
+    def reply(content, prompt=10, completion=5):
+        return {"choices": [{"message": {"content": content}}],
+                "usage": {"prompt_tokens": prompt, "completion_tokens": completion}}
+
+    def test_parses_tool_call_and_records_usage(self):
+        sent = []
+
+        def transport(payload):
+            sent.append(payload)
+            return self.reply('{"tool": "run_tests", "args": {}}')
+
+        policy = LLMPolicy(task="t", model="m", transport=transport)
+        action = policy.next_action([])
+        self.assertEqual((action.tool, action.args, action.phase), ("run_tests", {}, "验证"))
+        self.assertEqual(policy.calls, 1)
+        self.assertEqual(policy.last_usage["prompt_tokens"], 10)
+        self.assertEqual(policy.last_usage["attempts"], 1)
+        self.assertIsNone(policy.last_usage["last_error"])
+        self.assertIn("run_tests", sent[0]["messages"][0]["content"])
+
+    def test_retries_once_then_succeeds(self):
+        replies = iter([self.reply("not json"),
+                        self.reply('{"tool": "finish", "args": {"reason": "ok"}}')])
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: next(replies))
+        self.assertEqual(policy.next_action([]).tool, "finish")
+        self.assertEqual(policy.calls, 2)
+        self.assertEqual(policy.last_usage["prompt_tokens"], 20)
+        self.assertEqual(policy.last_usage["attempts"], 2)
+        self.assertTrue(policy.last_usage["last_error"].startswith("JSONDecodeError"))
+
+    def test_unknown_tool_fails_after_two_attempts(self):
+        policy = LLMPolicy(task="t", model="m",
+                           transport=lambda payload: self.reply('{"tool": "shell", "args": {}}'))
+        with self.assertRaises(RuntimeError):
+            policy.next_action([])
+        self.assertEqual(policy.calls, 2)
+        self.assertEqual(policy.last_usage["attempts"], 2)
+        self.assertIn("unknown tool", policy.last_usage["last_error"])
+
+    def test_call_log_records_every_attempt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "llm_calls.jsonl"
+            replies = iter([self.reply("not json"),
+                            self.reply('{"tool": "finish", "args": {"reason": "ok"}}')])
+            policy = LLMPolicy(task="t", model="m",
+                               transport=lambda payload: next(replies), log_path=path)
+            policy.next_action([])
+            records = [json.loads(line)
+                       for line in path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([record["attempt"] for record in records], [1, 2])
+        self.assertIn("JSONDecodeError", records[0]["error"])
+        self.assertIsNone(records[1]["error"])
+        self.assertTrue(records[0]["messages"][0]["content"].startswith("你是一个仓库维护 agent"))
+        self.assertEqual(records[1]["raw_content"],
+                         '{"tool": "finish", "args": {"reason": "ok"}}')
+        self.assertEqual(records[1]["step"], 1)
+
+    def test_accepts_json_code_fence(self):
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(
+            '```json\n{"tool": "run_tests", "args": {}}\n```'))
+        self.assertEqual(policy.next_action([]).tool, "run_tests")
+
+    def test_accepts_json_embedded_in_prose(self):
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(
+            '我选择读取配置：{"tool": "read_file", "args": {"path": "config.py"}} 完成'))
+        action = policy.next_action([])
+        self.assertEqual((action.tool, action.args), ("read_file", {"path": "config.py"}))
+
+    def test_json_mode_off_omits_response_format(self):
+        sent = []
+
+        def transport(payload):
+            sent.append(payload)
+            return self.reply('{"tool": "run_tests", "args": {}}')
+
+        LLMPolicy(task="t", model="m", transport=transport, json_mode="off").next_action([])
+        self.assertNotIn("response_format", sent[0])
+
+    def test_policy_from_env_falls_back_to_legacy_names(self):
+        names = ("LLM_API_KEY", "DEEPSEEK_API_KEY", "LLM_MODEL", "DEEPSEEK_MODEL",
+                 "LLM_BASE_URL", "DEEPSEEK_BASE_URL", "LLM_JSON_MODE")
+        saved = {name: os.environ.get(name) for name in names}
+        try:
+            for name in names:
+                os.environ.pop(name, None)
+            os.environ["DEEPSEEK_API_KEY"] = "legacy-key"
+            os.environ["DEEPSEEK_MODEL"] = "legacy-model"
+            os.environ["DEEPSEEK_BASE_URL"] = "https://example.test/v1"
+            with tempfile.TemporaryDirectory() as temp:
+                policy = policy_from_env("t", env_path=Path(temp) / "missing.env")
+            self.assertEqual(policy.model, "legacy-model")
+            self.assertEqual(policy.endpoint, "https://example.test/v1/chat/completions")
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+    def test_env_loader_does_not_override_existing_values(self):
+        saved = {name: os.environ.get(name)
+                 for name in ("LLM_MODEL", "LLM_API_KEY")}
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / ".env"
+                path.write_text("LLM_MODEL=from_file\nLLM_API_KEY=k\n",
+                                encoding="utf-8")
+                os.environ["LLM_MODEL"] = "keep"
+                os.environ.pop("LLM_API_KEY", None)
+                load_env(path)
+                self.assertEqual(os.environ["LLM_MODEL"], "keep")
+                self.assertEqual(os.environ["LLM_API_KEY"], "k")
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
 if __name__ == "__main__":

@@ -49,6 +49,9 @@ class Agent:
                          "action": {"tool": action.tool, "args": action.args},
                          "observation": observation,
                          "elapsed_ms": round((time.perf_counter() - started) * 1000)}
+                usage = getattr(policy, "last_usage", None)
+                if usage:
+                    event["llm"] = usage
                 history.append(event)
                 log.write(json.dumps(event, ensure_ascii=False) + "\n")
                 log.flush()
