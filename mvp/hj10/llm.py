@@ -31,6 +31,9 @@ DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = ""
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
+# Bump whenever SYSTEM_TEMPLATE changes, so runs stay attributable.
+PROMPT_VERSION = "v2"
+
 # Presentation metadata: the model only emits tool + args (docs/interfaces.md §2.2).
 PHASE_BY_TOOL = {
     "map_repository": "认识仓库",
@@ -50,11 +53,17 @@ SYSTEM_TEMPLATE = """你是一个仓库维护 agent，任务是在给定工作�
 输出要求：只输出一个 JSON 对象，不要解释、不要 Markdown 代码块：
 {{"tool": "<工具名>", "args": {{...}}}}
 
+正确示例（plan）：
+{{"tool": "plan", "args": {{"steps": ["第一步", "第二步"]}}}}
+
 工作规则：
 1. tests/ 下的文件只读，不要尝试修改它们。
 2. 修改代码后必须重新调用 run_tests；只有最新一次测试全部通过，finish 才会被接受。
 3. 不要重复读同一个文件；先用 map_repository 或 find_symbol 缩小范围。
-4. 参数必须与上面的工具签名一致，缺失参数会被拒绝。
+4. 所有参数都放在 args 对象里。例如 {{"tool": "plan", "args": {{"steps": ["第一步"]}}}}；
+   不要写成 {{"tool": "plan", "steps": [...]}}，也不要把工具签名当成顶层字段。
+5. 一次只输出一个 JSON 对象。即使需要读多个文件，也要分成多个步骤，不要在同一则回复里给多个动作。
+6. 推理保持简短；JSON 之外不要输出任何内容。
 """
 
 
@@ -77,7 +86,7 @@ class LLMPolicy:
     """Implements the same ``next_action(history)`` interface as ScriptedPolicy."""
 
     def __init__(self, task, model=DEFAULT_MODEL, api_key="", base_url=DEFAULT_BASE_URL,
-                 transport=None, temperature=0.0, max_tokens=800, timeout=120,
+                 transport=None, temperature=0.0, max_tokens=4096, timeout=120,
                  max_history=6, observation_limit=1200,
                  input_price=0.0, output_price=0.0, log_path=None,
                  json_mode="auto"):
@@ -96,8 +105,10 @@ class LLMPolicy:
         self.log_path = Path(log_path) if log_path else None
         self.json_mode = json_mode if json_mode in {"auto", "on", "off"} else "auto"
         self.json_supported = True
+        self.prompt_version = PROMPT_VERSION
         self.calls = 0
         self.last_usage = None
+        self.last_extra_actions = 0
 
     # --- prompt -----------------------------------------------------------------
     def system_prompt(self):
@@ -121,7 +132,7 @@ class LLMPolicy:
         return "\n".join(lines)
 
     def _messages(self, history):
-        return [
+        messages = [
             {"role": "system", "content": self.system_prompt()},
             {"role": "user", "content": (
                 f"任务：{self.task}\n\n"
@@ -129,6 +140,12 @@ class LLMPolicy:
                 f"到目前为止：\n{self._history_text(history)}"
             )},
         ]
+        if self.last_extra_actions:
+            messages.append({"role": "user", "content": (
+                f"注意：上一则回复里的动作不止一个（共 {self.last_extra_actions + 1} 个），"
+                "我只执行了第一个。请一次只输出一个 JSON 动作。"
+            )})
+        return messages
 
     # --- HTTP -------------------------------------------------------------------
     def _post(self, messages):
@@ -171,32 +188,93 @@ class LLMPolicy:
         return message.get("content") or ""
 
     @staticmethod
-    def _extract_json(text):
-        """Accept bare JSON, ```json fences, or JSON embedded in a sentence."""
+    def _strip_fence(text):
         stripped = (text or "").strip()
         if stripped.startswith("```"):
             _, _, body = stripped.partition("\n")
             stripped = body if body else stripped[3:]
             if stripped.rstrip().endswith("```"):
                 stripped = stripped.rstrip()[:-3]
-        stripped = stripped.strip()
+        return stripped.strip()
+
+    @classmethod
+    def _extract_json(cls, text):
+        """Accept bare JSON, fenced JSON, JSON in prose, and multiple objects.
+
+        Returns ``(first_value, extra_count)``; ``extra_count`` is the number of
+        additional JSON values the model emitted in the same reply. The first
+        value wins, so one protocol violation cannot abort the whole run.
+        """
+        stripped = cls._strip_fence(text)
         try:
-            return json.loads(stripped)
+            value = json.loads(stripped)
         except json.JSONDecodeError:
-            start, end = stripped.find("{"), stripped.rfind("}")
-            if start != -1 and end > start:
-                return json.loads(stripped[start:end + 1])
-            raise
+            value = None
+        if value is not None:
+            if isinstance(value, list):
+                items = [item for item in value if isinstance(item, dict)]
+                if not items:
+                    return value, 0
+                return items[0], max(len(items) - 1, 0)
+            return value, 0
+        decoder = json.JSONDecoder()
+        first, extra, index = None, 0, 0
+        while index < len(stripped):
+            start = stripped.find("{", index)
+            if start == -1:
+                break
+            try:
+                value, end = decoder.raw_decode(stripped, start)
+            except json.JSONDecodeError:
+                index = start + 1
+                continue
+            if first is None:
+                first = value
+            else:
+                extra += 1
+            index = end
+        if first is None:
+            raise json.JSONDecodeError("No JSON object found", stripped, 0)
+        return first, extra
+
+    @staticmethod
+    def _normalize_args(data):
+        """Accept ``args`` nesting, an ``arguments`` JSON string, or top-level keys.
+
+        Models that follow the function-calling convention often put the tool
+        parameters at the top level (``{"tool": "plan", "steps": [...]}``).
+        Accepting both shapes avoids a fatal-looking tool error for what is only
+        a formatting preference.
+        """
+        args = data.get("args")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = None
+        if not isinstance(args, dict) or not args:
+            arguments = data.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = None
+            if isinstance(arguments, dict) and arguments:
+                args = arguments
+        if not isinstance(args, dict) or not args:
+            loose = {key: value for key, value in data.items()
+                     if key not in {"tool", "args", "arguments"}}
+            if loose:
+                args = loose
+        return args if isinstance(args, dict) else {}
 
     def _parse(self, reply):
-        data = self._extract_json(self._content(reply))
+        data, extra = self._extract_json(self._content(reply))
+        self.last_extra_actions = extra
         tool = data["tool"]
         if tool not in TOOL_SPECS:
             raise ValueError(f"unknown tool {tool!r}")
-        args = data.get("args") or {}
-        if not isinstance(args, dict):
-            raise ValueError("args must be a JSON object")
-        return Action(tool, args, PHASE_BY_TOOL.get(tool, ""), "")
+        return Action(tool, self._normalize_args(data), PHASE_BY_TOOL.get(tool, ""), "")
 
     def _cost(self, prompt_tokens, completion_tokens):
         return round(
@@ -213,6 +291,7 @@ class LLMPolicy:
             "cost_usd": self._cost(prompt_tokens, completion_tokens),
             "attempts": attempts,
             "last_error": last_error,
+            "extra_actions": self.last_extra_actions,
         }
 
     def _record(self, step, attempt, messages, reply, error, elapsed_ms):
@@ -312,6 +391,7 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None, **kwarg
         api_key=api_key,
         base_url=_first_env("LLM_BASE_URL", "DEEPSEEK_BASE_URL", default=DEFAULT_BASE_URL),
         transport=transport,
+        max_tokens=int(_first_env("LLM_MAX_TOKENS", default="4096")),
         input_price=float(_first_env("LLM_PRICE_INPUT", "DEEPSEEK_PRICE_INPUT", default="0")),
         output_price=float(_first_env("LLM_PRICE_OUTPUT", "DEEPSEEK_PRICE_OUTPUT", default="0")),
         json_mode=_first_env("LLM_JSON_MODE", default="auto").strip().lower(),

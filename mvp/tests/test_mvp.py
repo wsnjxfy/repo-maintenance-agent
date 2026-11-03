@@ -14,7 +14,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from hj10.agent import Action, Agent
-from hj10.llm import LLMPolicy, load_env, policy_from_env
+from hj10.llm import PROMPT_VERSION, LLMPolicy, load_env, policy_from_env
 from hj10.report import write_report
 from hj10.tools import TOOL_SPECS, Tools, run_suite, tool_labels, tool_table
 from run_demo import FIXTURE, evaluate, run_demo
@@ -160,6 +160,27 @@ class TestToolBoundaries(unittest.TestCase):
         suite.write_text('import time\ntime.sleep(1)\n', encoding="utf-8")
         self.assertEqual(run_suite(self.workspace, suite, timeout=0.1)["status"], "execution_timeout")
 
+    def test_tool_error_is_recoverable(self):
+        class RecoveringPolicy:
+            def __init__(self):
+                self.calls = 0
+
+            def next_action(self, history):
+                self.calls += 1
+                if self.calls == 1:
+                    return Action("read_file", {})   # missing required "path"
+                if self.calls == 2:
+                    return Action("run_tests", {})
+                return None
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            history, status, _ = Agent(self.tools).run(
+                RecoveringPolicy(), Path(self.temp.name) / "recover.jsonl")
+        self.assertEqual(len(history), 2)
+        self.assertIn("error", history[0]["observation"])
+        self.assertEqual(history[1]["observation"]["status"], "failed")
+        self.assertEqual(status, "incomplete")
+
     def test_invalid_tool_action_stops_with_record(self):
         class BadPolicy:
             def next_action(self, history):
@@ -168,8 +189,8 @@ class TestToolBoundaries(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             history, status, _ = Agent(self.tools).run(BadPolicy(), Path(self.temp.name) / "trace.jsonl")
         self.assertEqual(status, "policy_failed")
-        self.assertEqual(len(history), 1)
-        self.assertIn("error", history[0]["observation"])
+        self.assertEqual(len(history), 3)
+        self.assertTrue(all("error" in event["observation"] for event in history))
 
 
 class TestReport(unittest.TestCase):
@@ -234,8 +255,8 @@ class TestInterfaceContract(unittest.TestCase):
             history, status, _ = Agent(Tools(self.run_dir / "workspace")).run(
                 MissingArgsPolicy(), Path(self.temp.name) / "bad-args.jsonl")
         self.assertEqual(status, "policy_failed")
-        self.assertEqual(len(history), 1)
-        self.assertIn("error", history[0]["observation"])
+        self.assertEqual(len(history), 3)
+        self.assertTrue(all("error" in event["observation"] for event in history))
 
 
 class TestLLMPolicy(unittest.TestCase):
@@ -334,12 +355,60 @@ class TestLLMPolicy(unittest.TestCase):
                 policy = policy_from_env("t", env_path=Path(temp) / "missing.env")
             self.assertEqual(policy.model, "legacy-model")
             self.assertEqual(policy.endpoint, "https://example.test/v1/chat/completions")
+            self.assertEqual(policy.max_tokens, 4096)
         finally:
             for name, value in saved.items():
                 if value is None:
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+    def test_multiple_actions_uses_first_and_flags_extra(self):
+        payloads = []
+
+        def transport(payload):
+            payloads.append(payload)
+            return self.reply('{"tool": "read_file", "args": {"path": "cli.py"}}\n'
+                              '{"tool": "read_file", "args": {"path": "config.py"}}')
+
+        policy = LLMPolicy(task="t", model="m", transport=transport)
+        action = policy.next_action([])
+        self.assertEqual((action.tool, action.args), ("read_file", {"path": "cli.py"}))
+        self.assertEqual(policy.last_usage["extra_actions"], 1)
+        history = [{"step": 1, "phase": "", "intent": "",
+                    "action": {"tool": "read_file", "args": {"path": "cli.py"}},
+                    "observation": {"ok": True}, "elapsed_ms": 0}]
+        policy.next_action(history)
+        self.assertIn("我只执行了第一个", payloads[1]["messages"][-1]["content"])
+
+    def test_json_array_uses_first_action(self):
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(
+            '[{"tool": "map_repository", "args": {}}, {"tool": "run_tests", "args": {}}]'))
+        self.assertEqual(policy.next_action([]).tool, "map_repository")
+        self.assertEqual(policy.last_usage["extra_actions"], 1)
+
+    def test_top_level_args_are_normalized(self):
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(
+            '{"tool": "plan", "steps": ["a", "b"]}'))
+        action = policy.next_action([])
+        self.assertEqual((action.tool, action.args), ("plan", {"steps": ["a", "b"]}))
+
+    def test_arguments_json_string_is_parsed(self):
+        content = '{"tool": "read_file", "arguments": "{\\"path\\": \\"config.py\\"}"}'
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(content))
+        self.assertEqual(policy.next_action([]).args, {"path": "config.py"})
+
+    def test_explicit_args_win_over_top_level_keys(self):
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(
+            '{"tool": "read_file", "args": {"path": "cli.py"}, "path": "ignored.py"}'))
+        self.assertEqual(policy.next_action([]).args, {"path": "cli.py"})
+
+    def test_prompt_states_args_nesting_with_example(self):
+        prompt = LLMPolicy(task="t", model="m").system_prompt()
+        self.assertIn('"tool": "plan", "args"', prompt)
+        self.assertIn("所有参数都放在 args 对象里", prompt)
+        self.assertIn('"tool": "plan", "steps"', prompt)   # 反面示例也在
+        self.assertEqual(LLMPolicy(task="t", model="m").prompt_version, PROMPT_VERSION)
 
     def test_env_loader_does_not_override_existing_values(self):
         saved = {name: os.environ.get(name)

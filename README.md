@@ -1,8 +1,8 @@
 # Repository Maintenance Agent · HJ10
 
-一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环**；**C1（接入真实模型）进行中，已跑通 1 次**。
+一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环** 与 **C1：接入真实模型并连续 3 次跑通教学任务（prompt v2）**；下一步是 C2 工具泛化。
 
-这版默认仍用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。加上 `--use-llm`（读 `.env`）或 `--model 名称` 可接入任何 OpenAI 兼容端点（DeepSeek、OpenAI、OpenRouter、Ollama 等）。单次成功只是管线证据，**不构成模型能力或方法优劣的结论**。
+这版默认仍用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。加上 `--use-llm`（读 `.env`）或 `--model 名称` 可接入任何 OpenAI 兼容端点（DeepSeek、OpenAI、OpenRouter、Ollama 等）。连续三次成功只说明 scaffold 已可用；**单次或少量成功不构成模型能力或方法优劣的结论**。
 
 ## 立即运行
 
@@ -25,6 +25,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 ```
 
 每次运行建立新的 `mvp/runs/demo-时间-随机后缀/`，不修改原始教学仓库。打开其中的 `report.html`，点击步骤或使用上一／下一步查看过程。浏览器报告完全离线，按钮用于查看已执行的记录，不会再次修改文件。
+
+### 命令行参数
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `--max-steps N` | 24 | 工具调用步数上限；耗尽 → `budget_exhausted`，退出码 1 |
+| `--output-dir PATH` | `mvp/runs` | run 目录的父层（仍会建唯一子目录） |
+| `--open` | 关 | 跑完用浏览器打开 `report.html` |
+| `--model NAME` | 无 | 使用指定的 OpenAI 兼容模型，临时覆盖 `.env` 的 `LLM_MODEL` |
+| `--use-llm` | 关 | 直接使用 `.env` 的 `LLM_MODEL` / `LLM_API_KEY` |
+| `--no-llm-log` | 关 | 不写 `llm_calls.jsonl` |
+
+不指定 `--model` 或 `--use-llm` 时运行预设脚本，不产生模型调用。端点、JSON 模式与价格见 `.env.example`；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
 
 ## 演示内容
 

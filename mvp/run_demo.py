@@ -104,7 +104,9 @@ def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=F
     } if usages else None
     summary = {
         "mode": "llm_demo" if model_enabled else "scripted_demo",
-        "versions": {"action": "v1", "tools": "v1", "prompt": "v1", "trajectory": "v1"},
+        "versions": {"action": "v1", "tools": "v1",
+                     "prompt": getattr(policy, "prompt_version", "v1"),
+                     "trajectory": "v1"},
         "model": getattr(policy, "model", "scripted_teaching"),
         "task": TASK, "status": status,
         "stop_reason": reason, "steps": len(events), "max_steps": max_steps,

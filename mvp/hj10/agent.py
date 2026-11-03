@@ -21,15 +21,19 @@ class Policy(Protocol):
 
 
 class Agent:
-    def __init__(self, tools, max_steps=24):
+    def __init__(self, tools, max_steps=24, max_tool_errors=3):
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
+        if max_tool_errors < 1:
+            raise ValueError("max_tool_errors must be positive")
         self.tools = tools
         self.max_steps = max_steps
+        self.max_tool_errors = max_tool_errors
 
     def run(self, policy: Policy, trajectory_path):
         history = []
         status, reason = "budget_exhausted", "已达到工具调用步数上限。"
+        tool_errors = 0
         with trajectory_path.open("w", encoding="utf-8") as log:
             for step in range(1, self.max_steps + 1):
                 try:
@@ -58,8 +62,15 @@ class Agent:
                 detail = observation.get("status", "error" if "error" in observation else "ok")
                 print(f"[{step:02d}] {action.phase}: {action.tool} -> {detail}", flush=True)
                 if "error" in observation and action.tool != "run_tests":
-                    status, reason = "policy_failed", observation["error"]
-                    break
+                    tool_errors += 1
+                    if tool_errors >= self.max_tool_errors:
+                        status = "policy_failed"
+                        reason = (f"连续 {tool_errors} 次工具错误，最后一条："
+                                  f"{observation['error']}")
+                        break
+                    # Recoverable: the error stays in history so the policy can correct it.
+                    continue
+                tool_errors = 0
                 if observation.get("status") in {"environment_error", "test_load_error", "execution_timeout"}:
                     status, reason = "incomplete", "测试未能完成，已停止；需根据日志判断环境或代码原因。"
                     break
