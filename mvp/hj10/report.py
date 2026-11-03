@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .tools import tool_labels
+
 
 def write_report(summary: dict, events: list[dict], destination: Path) -> None:
     """Render recorded facts without executing or evaluating any agent actions.
@@ -20,7 +22,8 @@ def write_report(summary: dict, events: list[dict], destination: Path) -> None:
     if template.count(marker) != 1:
         raise ValueError("Report template must contain exactly one data marker")
     payload = json.dumps(
-        {"summary": summary, "events": events}, ensure_ascii=False, allow_nan=False
+        {"summary": summary, "events": events, "labels": tool_labels()},
+        ensure_ascii=False, allow_nan=False
     )
     for literal, escaped in (
         ("&", "\\u0026"),

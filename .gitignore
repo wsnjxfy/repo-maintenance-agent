@@ -8,3 +8,5 @@ venv/
 mvp/runs/
 .DS_Store
 Thumbs.db
+
+.vscode/

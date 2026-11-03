@@ -14,13 +14,13 @@
 | 阶段模型 | DeepSeek API（OpenAI 兼容），只用于验证 scaffolding，**不作为研究结论** |
 | 语言范围 | Python |
 | 参照实现 | mini-SWE-agent 的循环结构（LLM + 工具调用 + 步数控制） |
-| 当前进度 | MVP 0 已完成；C0 部分完成；**C1 进行中（已跑通 1 次，待连续 3 次）**；详情见 [docs/progress.md](docs/progress.md) |
+| 当前进度 | MVP 0 已完成；C0 已完成；**C1 已完成（连续 3/3，prompt v2）**；下一步 C2；详情见 [docs/progress.md](docs/progress.md) |
 | 第一个可交付 | 1 个真实 SWE-bench instance 由 agent 产出补丁，并被官方 harness 判为 resolved 或 unresolved |
 | 参与者 | 2 人 |
 
 ## 1. 为什么现在需要这份文档
 
-1. **三处"下一步"已漂移**：`README.md` 说具体模型未定，`docs/mvp-decisions.md` 说数据集未选定，而 `project_target.txt` 已定 Qwen3-8B 与 SWE-bench。两人协同时会各照一份。
+1. **三处"下一步"已漂移**：`README.md` 说具体模型未定，`docs/mvp-decisions.md` 说数据集未选定，而研究目标已确定为 Qwen3-8B 与 SWE-bench。两人协同时会各照一份。
 2. **现有分解是研究阶段（周～月），缺可勾选的工程任务**：没有任何一份文档回答"这周做完什么算完成"。
 3. **接口必须先冻结**：`Action` schema、工具名、trajectory 字段一旦两人各改一套，merge 必然冲突。
 
@@ -92,24 +92,24 @@ R4 独立测试集与多次实验
 
 ### C0 版控、环境与接口约定（0.5 天）
 
-**状态（2026-11-02）：部分完成** —— 接口已冻结、`.env` 已建立；分支、提交与独立 venv 尚未做。
+**状态（2026-11-03）：已完成** —— 接口已冻结，`.env`、分支与 `.venv` 均已建立并推送。
 
 目标：让两人在同一约定下开工，避免改同一文件。
 
-- [ ] 在 `main` 提交 `project_target.txt` 与本文档
-- [ ] 建个人分支（如 `feat/llm-smoke`、`feat/harness`），约定：每次 PR 只动一层
+- [x] 在 `main` 提交计划与文档（`HJ10_plan_and_tasks.md` + `docs/`）
+- [x] 建个人分支 `charles` 并推送（约定：每次 PR 只动一层）
 - [x] 建 `.env` 与 `.env.example`；确认 `.gitignore` 覆盖 `.venv/`、`preds/`、`logs/`、`mvp/runs/`
 - [x] 冻结接口草案：[docs/interfaces.md](docs/interfaces.md) v1（`Action`、工具目录、trajectory、summary）
 - [x] 写入分工：A 负责适配器、prompt、工具层；B 负责数据集、Docker 环境、harness
-- [ ] 用 `uv venv .venv` 建独立环境（不要装进本机已有的 hermes-agent venv）
+- [x] 用 `uv venv .venv` 建独立环境（uv 0.9.9 / Python 3.11.15；`python` 已解析到 `.venv\Scripts\python.exe`）
 
 完成定义：新机器 clone 后能一条命令复现教学 demo；接口草案评审通过。
 负责人：两人共同。
 
 ### C1 强模型跑通现有教学任务（1–2 天，负责人 A）
 
-**状态（2026-11-02）：进行中 —— 已跑通 1 次，待连续 3 次。**
-证据：`mvp/runs/demo-20261102-201311-d24a4f`（deepseek-flash，11 步，8/8 + 7/7 + 3/3）。
+**状态（2026-11-03）：已完成（连续 3/3）。**
+证据：`demo-20261103-140044-fcd5d0`、`demo-20261103-140326-33aa60`、`demo-20261103-140345-d45d7a`（deepseek-flash，prompt v2，三次均 7/7 + 3/3）。
 
 目标：把"模型会不会用工具"与"环境"彻底解耦。现有 fixture 只有 4 个文件、测试 15 秒跑完，一轮迭代约 30 秒，是最便宜的调试场。
 
@@ -117,7 +117,7 @@ R4 独立测试集与多次实验
 - [x] `history → prompt → tool JSON → Action` 的正规化层（文字协议；支持 ```json 围栏与散文包裹）
 - [x] 每次调用记录 prompt/completion token、费用与耗时，写入 trajectory（另有 `llm_calls.jsonl` 记录完整请求/响应）
 - [x] 在 `mvp/fixtures/timeout_demo` 上跑，目标：模型自主完成"读码 → 改两档 → 跑测试 → 修错 → 通过"
-- [ ] 连续 3 次成功且轨迹可重放（当前 1/3；最近两次改动后尚未重跑）
+- [x] 连续 3 次成功且轨迹可重放（3/3：10–11 步、32 次调用对 31 步，仅 1 次重试）
 - [x] `summary.json` 的 `model_calls`、`tokens` 不再是 0 / null
 
 完成定义：8/8 可见测试由模型自主达成（不是脚本）；`final.patch` 与轨迹一致；费用可见。
@@ -256,7 +256,7 @@ Action(tool: str, args: dict, phase: str = "", intent: str = "")
 | WSL | `wsl --status` 返回 `E_ACCESSDENIED` | 安装／修复 WSL2 发行版，或改用云端评测 |
 | 磁盘 | 官方建议 ≥120GB 空闲给 Docker 虚拟磁盘 | 先确认剩余空间 |
 | 内存／CPU | 官方建议 16GB RAM、8 核 | 先确认本机规格 |
-| Python | `python` 目前指向 hermes-agent 的 venv（3.11.15） | 用 `uv venv .venv` 另开，不要污染 |
+| Python | `.venv` 已建立并生效（uv 0.9.9 / Python 3.11.15；未装 pip） | 装包用 `uv pip install --python .venv\Scripts\python.exe` |
 | 已知坑 | 在 DSH 沙箱下直接跑 `unittest` 会因临时目录权限全部报错 | 属环境问题，不是代码缺陷；CI 不受影响 |
 
 处置顺序：先 WSL → 再 Docker → 再 120GB → 最后才装 `swebench`。若 WSL 长期不可用，退路是云端评测（sb-cli / Modal），本机只跑 agent。

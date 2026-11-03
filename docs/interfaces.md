@@ -37,6 +37,7 @@ trajectory 字段   ← agent.py（写）
 
 - 兼容性改动（只加可选字段）：版本号不变。
 - 破坏性改动（改名、删字段、改语义）：对应版本号 +1，并在 §9 的变更记录里写一行。
+- **`prompt` 只要 `SYSTEM_TEMPLATE` 有任何改动（含加例子、改措辞）就 +1**：prompt 是实验条件的一部分，不记录版本就无法归因。
 - 报告与实验分析必须能读所有历史版本；这是唯一"永不改变"的要求。
 
 ## 2. Action schema v1
@@ -88,6 +89,8 @@ OpenAI tool_calls:
 ```
 
 归一化失败（JSON 坏、工具名不存在、参数类型错）时：**返回一条 `error` observation 让模型自我修正，不要抛异常终止整个 run**。这本身是可观察的行为，应记录进 trajectory。
+
+**多个动作的处理**：协议上要求「一步一个动作」。若模型仍在一则回复里给出多个 JSON（或一个数组），解析器只取**第一个**，并把多出的数量记入 `llm.extra_actions`；下一轮 prompt 会提示「只执行了第一个」。这样一次协议违规不会让整轮 run 报废，同时违规次数仍然可见。
 
 ### 2.4 兼容规则
 
@@ -202,7 +205,7 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `llm` | object | `{model, prompt_tokens, completion_tokens, cost_usd, attempts, last_error}`；`attempts` 含重试次数，`last_error` 为最后一次解析失败原因（无失败则为 null） |
+| `llm` | object | `{model, prompt_tokens, completion_tokens, cost_usd, attempts, last_error, extra_actions}`；`attempts` 含重试次数，`last_error` 为最后一次解析失败原因（无失败则为 null），`extra_actions` 为同一回复里被忽略的多余动作数 |
 
 ### 5.3 兼容规则
 
@@ -306,6 +309,8 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-01 | v1 | 落地：`TOOL_SPECS`、`tool_labels()`、`tool_table()`；报告标签与 `dispatch` 改为由目录派生；`summary` 增加 `versions`；守门测试 4 条 | 行为不变，契约可执行 |
 | 2026-11-02 | v1 | `llm` 字段增加 `attempts`、`last_error`，用于定位重试原因 | 兼容（只加可选字段） |
 | 2026-11-02 | v1 | 新增可选文件 `llm_calls.jsonl`：每次 API 调用的 messages / raw_content / error | 兼容（新文件，默认开启） |
+| 2026-11-02 | v1 | 协议明确「一步一个动作」；解析器对多动作/数组取第一个，记入 `llm.extra_actions` | 兼容（多一个字段） |
+| 2026-11-03 | v1 | `prompt` 升到 v2：规则 4 明确「参数放 args」并加正反例；`summary.versions.prompt` 改为读取 `PROMPT_VERSION` | 兼容（仅版本值变化） |
 
 ## 10. 常见事故（本文件要防的东西）
 

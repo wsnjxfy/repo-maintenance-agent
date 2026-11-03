@@ -1,8 +1,8 @@
 # Repository Maintenance Agent · HJ10
 
-一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环**。
+一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环** 与 **C1：接入真实模型并连续 3 次跑通教学任务（prompt v2）**；下一步是 C2 工具泛化。
 
-这版用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。**没有接入语言模型，不产生模型能力或方法提升的实验结论。**
+这版默认仍用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。加上 `--use-llm`（读 `.env`）或 `--model 名称` 可接入任何 OpenAI 兼容端点（DeepSeek、OpenAI、OpenRouter、Ollama 等）。连续三次成功只说明 scaffold 已可用；**单次或少量成功不构成模型能力或方法优劣的结论**。
 
 ## 立即运行
 
@@ -12,6 +12,12 @@
 python mvp/run_demo.py --open
 ```
 
+接入真实模型（任何 OpenAI 兼容端点，例如 DeepSeek、OpenAI、OpenRouter、本地 Ollama）。先在 `.env` 填好 `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（模板见 `.env.example`）：
+
+```sh
+python -B mvp/run_demo.py --use-llm --open
+```
+
 Windows PowerShell 可使用包装脚本，它会寻找已有 Python（包括本机 Codex 提供的运行时）：
 
 ```powershell
@@ -19,6 +25,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 ```
 
 每次运行建立新的 `mvp/runs/demo-时间-随机后缀/`，不修改原始教学仓库。打开其中的 `report.html`，点击步骤或使用上一／下一步查看过程。浏览器报告完全离线，按钮用于查看已执行的记录，不会再次修改文件。
+
+### 命令行参数
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `--max-steps N` | 24 | 工具调用步数上限；耗尽 → `budget_exhausted`，退出码 1 |
+| `--output-dir PATH` | `mvp/runs` | run 目录的父层（仍会建唯一子目录） |
+| `--open` | 关 | 跑完用浏览器打开 `report.html` |
+| `--model NAME` | 无 | 使用指定的 OpenAI 兼容模型，临时覆盖 `.env` 的 `LLM_MODEL` |
+| `--use-llm` | 关 | 直接使用 `.env` 的 `LLM_MODEL` / `LLM_API_KEY` |
+| `--no-llm-log` | 关 | 不写 `llm_calls.jsonl` |
+
+不指定 `--model` 或 `--use-llm` 时运行预设脚本，不产生模型调用。端点、JSON 模式与价格见 `.env.example`；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
 
 ## 演示内容
 
@@ -63,7 +82,8 @@ python mvp/run_demo.py --max-steps 3
 - `task.txt`：本轮任务说明。
 - `trajectory.jsonl`：每一步的意图、工具参数、实际反馈与耗时。
 - `final.patch`：初始代码到最终代码的统一 diff。
-- `summary.json`：停止状态、预算、评测和耗时；模型调用为 0，token 为 null。
+- `summary.json`：停止状态、模型调用次数、token 与费用、评测和耗时。
+- `llm_calls.jsonl`：仅模型运行；每次 API 调用的完整请求与原始响应（`--no-llm-log` 可关闭）。
 - `report.html`：可直接打开的中文轨迹浏览器。
 
 运行目录默认不提交到 Git。原始 fixture 里的测试会失败，这是任务的起点；维护系统自身的检查请运行：

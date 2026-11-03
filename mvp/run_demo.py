@@ -1,4 +1,4 @@
-"""Run the teaching MVP: python mvp/run_demo.py [--open] [--max-steps 24]."""
+"""Run the teaching MVP: python mvp/run_demo.py [--open] [--max-steps 24] [--model NAME]."""
 
 import argparse
 from datetime import datetime
@@ -12,6 +12,7 @@ from uuid import uuid4
 import webbrowser
 
 from hj10.agent import Agent
+from hj10.llm import policy_from_env
 from hj10.policy import ScriptedPolicy
 from hj10.report import write_report
 from hj10.tools import Tools, run_suite
@@ -73,7 +74,7 @@ def final_diff(workspace):
     return "".join(patches)
 
 
-def run_demo(output_root=None, max_steps=24):
+def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=False):
     started = time.perf_counter()
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
@@ -84,18 +85,37 @@ def run_demo(output_root=None, max_steps=24):
     workspace = run_dir / "workspace"
     shutil.copytree(FIXTURE, workspace, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (run_dir / "task.txt").write_text(TASK, encoding="utf-8")
-    print("HJ10 教学 MVP：预设决策，真实文件操作与测试。", flush=True)
+    model_enabled = bool(model) or use_llm
+    log_path = run_dir / "llm_calls.jsonl" if model_enabled and log_llm else None
+    policy = (policy_from_env(TASK, model, log_path=log_path) if model_enabled
+              else ScriptedPolicy())
+    print("HJ10 教学 MVP：" + ("真实模型决策。" if model_enabled else "预设决策，真实文件操作与测试。"),
+          flush=True)
     events, status, reason = Agent(Tools(workspace), max_steps).run(
-        ScriptedPolicy(), run_dir / "trajectory.jsonl"
+        policy, run_dir / "trajectory.jsonl"
     )
     # Evaluation is intentionally outside Agent.run and never enters its history.
     evaluation = evaluate(workspace)
     patch = final_diff(workspace)
+    usages = [event["llm"] for event in events if "llm" in event]
+    tokens = {
+        "prompt": sum(item.get("prompt_tokens", 0) for item in usages),
+        "completion": sum(item.get("completion_tokens", 0) for item in usages),
+    } if usages else None
     summary = {
-        "mode": "scripted_demo", "task": TASK, "status": status,
+        "mode": "llm_demo" if model_enabled else "scripted_demo",
+        "versions": {"action": "v1", "tools": "v1",
+                     "prompt": getattr(policy, "prompt_version", "v1"),
+                     "trajectory": "v1"},
+        "model": getattr(policy, "model", "scripted_teaching"),
+        "task": TASK, "status": status,
         "stop_reason": reason, "steps": len(events), "max_steps": max_steps,
+        "model_calls": getattr(policy, "calls", 0),
+        "tokens": tokens,
+        "cost_usd": round(sum(item.get("cost_usd", 0.0) for item in usages), 6),
+        "llm_log": log_path.name if log_path else None,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
-        "model_calls": 0, "tokens": None, "evaluation": evaluation,
+        "evaluation": evaluation,
         "final_diff": patch, "run_dir": run_id,
     }
     (run_dir / "summary.json").write_text(
@@ -107,6 +127,11 @@ def run_demo(output_root=None, max_steps=24):
     print(f"独立需求测试：{evaluation['requirements']['passed']}/{evaluation['requirements']['total']}")
     print(f"独立回归测试：{evaluation['regressions']['passed']}/{evaluation['regressions']['total']}")
     print(f"新增回归：{len(evaluation['new_regressions'])}")
+    if tokens:
+        print(f"模型调用：{summary['model_calls']} 次；"
+              f"token：{tokens['prompt']}+{tokens['completion']}；费用：{summary['cost_usd']}")
+    if log_path:
+        print(f"模型调用日志：{log_path}")
     print(f"报告：{run_dir / 'report.html'}")
     return summary, events, run_dir
 
@@ -114,14 +139,22 @@ def run_demo(output_root=None, max_steps=24):
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(description="HJ10 scripted teaching MVP; no model or dependencies needed.")
+    parser = argparse.ArgumentParser(
+        description="HJ10 teaching runs: scripted policy by default, or an "
+                    "OpenAI-compatible model with --model.")
     parser.add_argument("--max-steps", type=int, default=24, help="Tool call budget (default: 24)")
     parser.add_argument("--output-dir", type=Path, help="Parent directory for a new, unique run")
     parser.add_argument("--open", action="store_true", help="Open the generated offline report")
+    parser.add_argument("--model", help="Model name for the OpenAI-compatible endpoint (default: LLM_MODEL from .env)")
+    parser.add_argument("--use-llm", action="store_true",
+                        help="Use LLM_MODEL from .env instead of passing a model name")
+    parser.add_argument("--no-llm-log", action="store_true",
+                        help="Do not write llm_calls.jsonl (per-call request/response log) for model runs")
     args = parser.parse_args()
     if args.max_steps < 1:
         parser.error("--max-steps must be positive")
-    summary, _, run_dir = run_demo(args.output_dir, args.max_steps)
+    summary, _, run_dir = run_demo(args.output_dir, args.max_steps, args.model,
+                                   log_llm=not args.no_llm_log, use_llm=args.use_llm)
     if args.open:
         webbrowser.open((run_dir / "report.html").as_uri())
     return 0 if summary["status"] == "completed" and summary["evaluation"]["passed"] else 1
