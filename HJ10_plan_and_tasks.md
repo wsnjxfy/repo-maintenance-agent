@@ -14,7 +14,7 @@
 | 阶段模型 | DeepSeek API（OpenAI 兼容），只用于验证 scaffolding，**不作为研究结论** |
 | 语言范围 | Python |
 | 参照实现 | mini-SWE-agent 的循环结构（LLM + 工具调用 + 步数控制） |
-| 当前进度 | MVP 0 已完成；C0 基本完成；**C1 已完成（连续 3/3，prompt v2）**；下一步 C2；详情见 [docs/progress.md](docs/progress.md) |
+| 当前进度 | MVP 0 已完成；C0 已完成；**C1 已完成（连续 3/3，prompt v2）**；下一步 C2；详情见 [docs/progress.md](docs/progress.md) |
 | 第一个可交付 | 1 个真实 SWE-bench instance 由 agent 产出补丁，并被官方 harness 判为 resolved 或 unresolved |
 | 参与者 | 2 人 |
 
@@ -92,7 +92,7 @@ R4 独立测试集与多次实验
 
 ### C0 版控、环境与接口约定（0.5 天）
 
-**状态（2026-11-03）：基本完成** —— 接口已冻结、`.env` 与分支已建立并推送；仅独立 venv 未做。
+**状态（2026-11-03）：已完成** —— 接口已冻结，`.env`、分支与 `.venv` 均已建立并推送。
 
 目标：让两人在同一约定下开工，避免改同一文件。
 
@@ -101,7 +101,7 @@ R4 独立测试集与多次实验
 - [x] 建 `.env` 与 `.env.example`；确认 `.gitignore` 覆盖 `.venv/`、`preds/`、`logs/`、`mvp/runs/`
 - [x] 冻结接口草案：[docs/interfaces.md](docs/interfaces.md) v1（`Action`、工具目录、trajectory、summary）
 - [x] 写入分工：A 负责适配器、prompt、工具层；B 负责数据集、Docker 环境、harness
-- [ ] 用 `uv venv .venv` 建独立环境（目前仍使用系统 Python 3.11）
+- [x] 用 `uv venv .venv` 建独立环境（uv 0.9.9 / Python 3.11.15；`python` 已解析到 `.venv\Scripts\python.exe`）
 
 完成定义：新机器 clone 后能一条命令复现教学 demo；接口草案评审通过。
 负责人：两人共同。
@@ -256,7 +256,7 @@ Action(tool: str, args: dict, phase: str = "", intent: str = "")
 | WSL | `wsl --status` 返回 `E_ACCESSDENIED` | 安装／修复 WSL2 发行版，或改用云端评测 |
 | 磁盘 | 官方建议 ≥120GB 空闲给 Docker 虚拟磁盘 | 先确认剩余空间 |
 | 内存／CPU | 官方建议 16GB RAM、8 核 | 先确认本机规格 |
-| Python | `python` 目前指向 hermes-agent 的 venv（3.11.15） | 用 `uv venv .venv` 另开，不要污染 |
+| Python | `.venv` 已建立并生效（uv 0.9.9 / Python 3.11.15；未装 pip） | 装包用 `uv pip install --python .venv\Scripts\python.exe` |
 | 已知坑 | 在 DSH 沙箱下直接跑 `unittest` 会因临时目录权限全部报错 | 属环境问题，不是代码缺陷；CI 不受影响 |
 
 处置顺序：先 WSL → 再 Docker → 再 120GB → 最后才装 `swebench`。若 WSL 长期不可用，退路是云端评测（sb-cli / Modal），本机只跑 agent。
