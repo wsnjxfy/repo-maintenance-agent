@@ -1,4 +1,4 @@
-name: Check teaching MVP
+name: Check teaching MVP and Sphinx 7462 tools
 on: [push, pull_request]
 jobs:
   test:
@@ -13,3 +13,5 @@ jobs:
           python-version: '3.12'
       - run: python -B -m unittest discover -s mvp/tests -v
       - run: python -B mvp/run_demo.py
+      - run: python -m pip install pytest==8.3.3
+      - run: python -B -m unittest discover -s experiments/sphinx_7462/tests -v

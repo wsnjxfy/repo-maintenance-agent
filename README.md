@@ -4,6 +4,8 @@
 
 这版默认仍用预设脚本提出操作，真实执行代码读取、AST 符号检索、跨文件补丁和 Python 测试；运行后生成可逐步浏览的中文离线报告。加上 `--use-llm`（读 `.env`）或 `--model 名称` 可接入任何 OpenAI 兼容端点（DeepSeek、OpenAI、OpenRouter、Ollama 等）。连续三次成功只说明 scaffold 已可用；**单次或少量成功不构成模型能力或方法优劣的结论**。
 
+Sphinx 7462 [工具说明](experiments/sphinx_7462/README.md) · [团队更新记录](CHANGELOG.md)
+
 ## 立即运行
 
 需要 Python 3.10+，仅使用标准库，无需安装依赖、下载模型或启动服务。
