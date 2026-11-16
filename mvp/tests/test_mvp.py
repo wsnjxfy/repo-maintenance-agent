@@ -11,12 +11,15 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # mvp/ (run_demo)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root (hj10, tooling)
 
 from hj10.agent import Action, Agent
 from hj10.llm import PROMPT_VERSION, LLMPolicy, load_env, policy_from_env
 from hj10.report import write_report
-from hj10.tools import TOOL_SPECS, Tools, run_suite, tool_labels, tool_table
+from tooling.backends.toy import Tools
+from tooling.exec.suite import run_suite
+from tooling.specs import TOOL_SPECS, tool_labels, tool_table
 from run_demo import FIXTURE, evaluate, run_demo
 
 

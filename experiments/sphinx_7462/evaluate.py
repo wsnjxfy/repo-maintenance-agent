@@ -20,7 +20,7 @@ from experiments.sphinx_7462.prepare import (
     BASE_COMMIT, REPOSITORY, SOURCE_SHA256, TASK_ID,
     digest, extract_source, manifest, probe_environment, protected_source,
 )
-from experiments.sphinx_7462.tools import (
+from tooling.backends.repo import (
     IGNORED_DIRS, _changes, _digest, _files, _process, _safe_path,
     _worker_env, _write_json,
 )

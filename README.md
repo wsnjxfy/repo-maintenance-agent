@@ -68,15 +68,19 @@ python mvp/run_demo.py --max-steps 3
 | 文件 | 关注的问题 |
 | --- | --- |
 | `mvp/run_demo.py` | 复制任务工作区、运行流程、最后独立验收 |
-| `mvp/hj10/agent.py` | 模型/策略怎样与工具交替执行，何时停止 |
-| `mvp/hj10/policy.py` | 预设教学决策；下一阶段替换为模型适配器 |
-| `mvp/hj10/tools.py` | 文件与编辑边界、AST 定义、文本候选引用、测试调用 |
-| `mvp/test_runner.py` | 新进程运行 unittest，返回结构化测试结果 |
-| `mvp/hj10/report.py` / `report_template.html` | 将实际轨迹呈现为离线报告 |
+| `hj10/agent.py` | 模型/策略怎样与工具交替执行，何时停止 |
+| `hj10/llm.py` | OpenAI 兼容适配器：prompt、解析、用量与调用日志 |
+| `hj10/policy.py` | 预设教学决策；`--use-llm` 时由真实模型取代 |
+| `tooling/specs.py` | 工具目录：名称、参数、说明（prompt 与报告标签的唯一来源） |
+| `tooling/backends/toy.py` | 教学 backend：只作用于 4 档 fixture |
+| `tooling/backends/repo.py` | 真实 repo backend：6 个动作、动作预算、补丁导出 |
+| `tooling/exec/` | 新进程运行 unittest，返回结构化测试结果 |
+| `hj10/report.py` / `report_template.html` | 将实际轨迹呈现为离线报告 |
 | `mvp/fixtures/timeout_demo/` | 保留初始缺陷的三文件教学仓库及公开测试 |
 | `mvp/evaluation/hidden_timeout_tests.py` | 只供独立评测器使用的示范验收检查 |
+| `experiments/sphinx_7462/` | 单题实验台：工作区准备、独立评测与判定 |
 
-建议先读 `agent.py`，再对应报告看每一次 `Action → observation`，最后看工具实现。源码注释中的 `Policy.next_action(history)` 是下一阶段接入真实模型的位置。
+建议先读 `hj10/agent.py`，再对应报告看每一次 `Action → observation`，最后看 `tooling/backends/` 的执行实现。源码注释中的 `Policy.next_action(history)` 是接入模型的接口位置。
 
 ## 运行产物
 

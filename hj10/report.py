@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .tools import tool_labels
+from tooling.specs import tool_labels
 
 
 def write_report(summary: dict, events: list[dict], destination: Path) -> None:

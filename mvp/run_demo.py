@@ -11,11 +11,14 @@ import time
 from uuid import uuid4
 import webbrowser
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from hj10.agent import Agent
 from hj10.llm import policy_from_env
 from hj10.policy import ScriptedPolicy
 from hj10.report import write_report
-from hj10.tools import Tools, run_suite
+from tooling.backends.toy import Tools
+from tooling.exec.suite import run_suite
 
 
 MVP_ROOT = Path(__file__).resolve().parent
@@ -91,9 +94,9 @@ def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=F
               else ScriptedPolicy())
     print("HJ10 教学 MVP：" + ("真实模型决策。" if model_enabled else "预设决策，真实文件操作与测试。"),
           flush=True)
-    events, status, reason = Agent(Tools(workspace), max_steps).run(
-        policy, run_dir / "trajectory.jsonl"
-    )
+    events, status, reason = Agent(
+        Tools(workspace, finish_requires_tests=not model_enabled), max_steps
+    ).run(policy, run_dir / "trajectory.jsonl")
     # Evaluation is intentionally outside Agent.run and never enters its history.
     evaluation = evaluate(workspace)
     patch = final_diff(workspace)

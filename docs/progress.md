@@ -72,3 +72,29 @@
 - 429/5xx 退避重试、token 预算上限（C4 前必须补）
 - 每轮约 14k prompt tokens 对 62 行仓库仍偏高，来源是每步重发 history
 - 进入 C2：工具泛化（去文件名白名单、`bash`、行区间读取）
+
+## 2026-11-16 ｜ 结构调整：核心 / 工具层 / 演示分离
+
+动机：`mvp/hj10` 同时住着「研究核心」与「教学示范」，`tools.py` 同时住着「工具规格」「玩具 backend」「测试胶水」，导致接 C3 时依赖方向会变成 agent → 单一实验。
+
+### 目录变化（纯搬移，无行为改动）
+
+| 变更 | 从 | 到 |
+| --- | --- | --- |
+| 核心套件 | `mvp/hj10/` | `hj10/` |
+| 工具规格 | `mvp/hj10/tools.py` 的 `TOOL_SPECS` 等 | `tooling/specs.py` |
+| 玩具 backend | `mvp/hj10/tools.py` 的 `Tools` | `tooling/backends/toy.py` |
+| 真实 repo backend | `experiments/sphinx_7462/tools.py` | `tooling/backends/repo.py`（blob hash 相同） |
+| 测试执行器 | `mvp/test_runner.py` + `run_suite` | `tooling/exec/unittest_runner.py` + `tooling/exec/suite.py` |
+| 工具测试 | `experiments/.../tests/test_tools.py` | `tooling/tests/test_repo_backend.py` |
+
+### 行为变化（唯一一項）
+
+`Tools(workspace, finish_requires_tests=...)`：教学 demo 保持「测试通过才接受完成」；模型运行改为只交付结果，判定交给独立评测（`mvp/run_demo.py` 依 `model_enabled` 传入）。
+
+### 验证
+
+- `mvp/tests`：36 OK
+- `experiments/sphinx_7462/tests`：21 OK
+- `tooling/tests`：16/18，2 个失败与本机 `git 2.37.0` 行为有关（搬移前后 blob hash 相同，非重构造成）
+

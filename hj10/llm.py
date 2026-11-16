@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 
 from .agent import Action
-from .tools import TOOL_SPECS, tool_table
+from tooling.specs import TOOL_SPECS, tool_table
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"

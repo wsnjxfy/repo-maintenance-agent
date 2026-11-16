@@ -10,3 +10,6 @@ mvp/runs/
 Thumbs.db
 
 .vscode/
+
+# 本机临时工作区（clone 的参考 repo）
+.work/

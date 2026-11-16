@@ -1,108 +1,32 @@
-"""Small tools with an explicit workspace boundary and a fixed test command."""
+"""Toy backend: the seven teaching tools over a fixture-sized workspace.
+
+This backend only knows the four fixture files. It exists so the agent loop can
+be exercised in about a second, and so C0/C1 evidence stays reproducible. It is
+deliberately *not* general: real repositories use ``tooling.backends.repo``.
+"""
 
 import ast
 import difflib
-import json
 from pathlib import Path
 import re
-import subprocess
-import sys
 
-
-MVP_ROOT = Path(__file__).resolve().parents[1]
-
-# Single source of truth for the agent's tool catalog (docs/interfaces.md §3).
-# Dispatch, the prompt table, report labels and the guard tests all derive from it.
-TOOL_SPECS = {
-    "map_repository": {
-        "args": {},
-        "doc": "用 AST 列出可读文件的函数与类定义。",
-        "label": "建立仓库地图",
-        "mutating": False,
-    },
-    "find_symbol": {
-        "args": {"symbol": "identifier"},
-        "doc": "查找符号的定义位置与文本候选引用。",
-        "label": "检索符号",
-        "mutating": False,
-    },
-    "read_file": {
-        "args": {"path": "str"},
-        "doc": "读取允许范围内的文件全文。",
-        "label": "阅读代码",
-        "mutating": False,
-    },
-    "plan": {
-        "args": {"steps": "list[str]"},
-        "doc": "记录修改计划的文本步骤。",
-        "label": "规划修改",
-        "mutating": False,
-    },
-    "replace_text": {
-        "args": {"path": "str", "old": "str", "new": "str"},
-        "doc": "在文件中做唯一片段替换；old 必须恰好出现一次。",
-        "label": "应用增量补丁",
-        "mutating": True,
-    },
-    "run_tests": {
-        "args": {},
-        "doc": "在独立进程中运行可见测试，返回结构化结果。",
-        "label": "运行可见测试",
-        "mutating": False,
-    },
-    "finish": {
-        "args": {"reason": "str"},
-        "doc": "提交完成请求；要求最新工作区已有通过的测试。",
-        "label": "请求结束",
-        "mutating": False,
-    },
-}
-
-
-def tool_labels():
-    """Report labels derived from the catalog, so a rename cannot go stale."""
-    return {name: spec["label"] for name, spec in TOOL_SPECS.items()}
-
-
-def tool_table():
-    """Render the catalog for a model prompt. Never hand-write this table."""
-    lines = []
-    for name, spec in TOOL_SPECS.items():
-        args = ", ".join(f"{key}: {kind}" for key, kind in spec["args"].items()) or "无"
-        lines.append(f"- {name}({args})：{spec['doc']}")
-    return "\n".join(lines)
-
-
-def run_suite(workspace, test_file, class_name=None, timeout=15):
-    command = [sys.executable, "-I", "-B", str(MVP_ROOT / "test_runner.py"),
-               "--workspace", str(Path(workspace).resolve()),
-               "--test-file", str(Path(test_file).resolve())]
-    if class_name:
-        command.extend(["--class-name", class_name])
-    try:
-        completed = subprocess.run(command, cwd=workspace, capture_output=True,
-                                   text=True, encoding="utf-8", timeout=timeout)
-        result = json.loads(completed.stdout)
-        if completed.returncode not in (0, 1, 2) or not isinstance(result, dict):
-            raise ValueError("Unexpected test runner result")
-        return result
-    except subprocess.TimeoutExpired:
-        return {"status": "execution_timeout", "total": 0, "passed": 0,
-                "failed": 0, "errors": 1, "cases": [], "output": "",
-                "error": f"Test process exceeded {timeout} seconds; cause requires inspection"}
-    except (OSError, ValueError) as exc:
-        message = f"Test runner error: {exc}"
-    return {"status": "environment_error", "total": 0, "passed": 0,
-            "failed": 0, "errors": 1, "cases": [], "output": "", "error": message}
+from tooling.exec.suite import run_suite
+from tooling.specs import TOOL_SPECS
 
 
 class Tools:
-    """Only expose known toy files. Tests cannot be edited by the policy."""
+    """Only expose known toy files. Tests cannot be edited by the policy.
 
-    def __init__(self, workspace):
+    ``finish_requires_tests`` keeps the teaching behaviour ("refuse to finish
+    unless the latest visible tests pass"). Research runs set it to ``False`` so
+    the tool only delivers a result and the harness does the judging.
+    """
+
+    def __init__(self, workspace, finish_requires_tests=True):
         self.workspace = Path(workspace).resolve()
         self.editable = {"config.py", "client.py", "cli.py"}
         self.readable = self.editable | {"tests/test_visible.py"}
+        self.finish_requires_tests = finish_requires_tests
         self.last_tests = None
 
     def _path(self, name, *, edit=False):
@@ -171,6 +95,8 @@ class Tools:
         return self.last_tests
 
     def finish(self, reason):
+        if not self.finish_requires_tests:
+            return {"accepted": True, "reason": reason}
         accepted = (self.last_tests is not None and self.last_tests["status"] == "passed"
                     and self.last_tests.get("total", 0) > 0
                     and self.last_tests.get("passed") == self.last_tests["total"])
