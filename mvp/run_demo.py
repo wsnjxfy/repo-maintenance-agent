@@ -13,12 +13,13 @@ import webbrowser
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from hj10.agent import Agent
-from hj10.llm import policy_from_env
-from hj10.policy import ScriptedPolicy
-from hj10.report import write_report
-from tooling.backends.toy import Tools
-from tooling.exec.suite import run_suite
+from agent_core.agent import Agent
+from agent_core.llm import policy_from_env
+from agent_core.policy import ScriptedPolicy
+from agent_core.report import write_report
+from runtime.backends.toy import Tools
+from runtime.exec.suite import run_suite
+from tools.toolsets import DEFAULT_TOOLSET, get_toolset, tool_labels, tool_names
 
 
 MVP_ROOT = Path(__file__).resolve().parent
@@ -77,7 +78,8 @@ def final_diff(workspace):
     return "".join(patches)
 
 
-def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=False):
+def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=False,
+             toolset=DEFAULT_TOOLSET):
     started = time.perf_counter()
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
@@ -89,9 +91,15 @@ def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=F
     shutil.copytree(FIXTURE, workspace, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (run_dir / "task.txt").write_text(TASK, encoding="utf-8")
     model_enabled = bool(model) or use_llm
+    entry = get_toolset(toolset)
+    if entry["backend"] != "toy":
+        raise ValueError(
+            "Toolset {!r} needs the {!r} backend, which requires a prepared run "
+            "directory; that adapter is not wired yet.".format(toolset, entry["backend"])
+        )
     log_path = run_dir / "llm_calls.jsonl" if model_enabled and log_llm else None
-    policy = (policy_from_env(TASK, model, log_path=log_path) if model_enabled
-              else ScriptedPolicy())
+    policy = (policy_from_env(TASK, model, log_path=log_path, toolset=toolset)
+              if model_enabled else ScriptedPolicy())
     print("HJ10 教学 MVP：" + ("真实模型决策。" if model_enabled else "预设决策，真实文件操作与测试。"),
           flush=True)
     events, status, reason = Agent(
@@ -111,6 +119,8 @@ def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=F
                      "prompt": getattr(policy, "prompt_version", "v1"),
                      "trajectory": "v1"},
         "model": getattr(policy, "model", "scripted_teaching"),
+        "toolset": toolset,
+        "tools_enabled": tool_names(toolset),
         "task": TASK, "status": status,
         "stop_reason": reason, "steps": len(events), "max_steps": max_steps,
         "model_calls": getattr(policy, "calls", 0),
@@ -125,7 +135,8 @@ def run_demo(output_root=None, max_steps=24, model=None, log_llm=True, use_llm=F
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (run_dir / "final.patch").write_text(patch, encoding="utf-8", newline="\n")
-    write_report(summary, events, run_dir / "report.html")
+    write_report(summary, events, run_dir / "report.html",
+                 labels=tool_labels(toolset))
     print(f"\n状态：{status}；可见测试记录保存在 trajectory.jsonl", flush=True)
     print(f"独立需求测试：{evaluation['requirements']['passed']}/{evaluation['requirements']['total']}")
     print(f"独立回归测试：{evaluation['regressions']['passed']}/{evaluation['regressions']['total']}")
@@ -151,13 +162,16 @@ def main():
     parser.add_argument("--model", help="Model name for the OpenAI-compatible endpoint (default: LLM_MODEL from .env)")
     parser.add_argument("--use-llm", action="store_true",
                         help="Use LLM_MODEL from .env instead of passing a model name")
+    parser.add_argument("--toolset", default=DEFAULT_TOOLSET,
+                        help="Which toolset to expose (default: toy-v1)")
     parser.add_argument("--no-llm-log", action="store_true",
                         help="Do not write llm_calls.jsonl (per-call request/response log) for model runs")
     args = parser.parse_args()
     if args.max_steps < 1:
         parser.error("--max-steps must be positive")
     summary, _, run_dir = run_demo(args.output_dir, args.max_steps, args.model,
-                                   log_llm=not args.no_llm_log, use_llm=args.use_llm)
+                                   log_llm=not args.no_llm_log, use_llm=args.use_llm,
+                                   toolset=args.toolset)
     if args.open:
         webbrowser.open((run_dir / "report.html").as_uri())
     return 0 if summary["status"] == "completed" and summary["evaluation"]["passed"] else 1

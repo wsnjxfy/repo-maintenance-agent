@@ -101,7 +101,7 @@ OpenAI tool_calls:
 | `args` 改名 `arguments` | 破坏 | `action: v2`，旧数据读取时映射 |
 | 删除字段 | 破坏 | 同上 |
 
-## 3. 工具目录（TOOL_SPECS）
+## 3. 工具目录与 toolset（TOOL_SPECS / TOOLSETS）
 
 ### 3.1 结构
 
@@ -124,18 +124,18 @@ TOOL_SPECS = {
 }
 ```
 
-### 3.2 四个消费者必须由 TOOL_SPECS 生成
+### 3.2 四个消费者必须由当前 toolset 生成
 
 | 消费者 | 内容 | 生成方式 |
 | --- | --- | --- |
-| prompt 工具表 | 名称、说明、参数 | 遍历 `TOOL_SPECS` |
-| `Tools.dispatch` | 合法工具集合 | `set(TOOL_SPECS)` |
-| 报告标签 | 中文名称 | `TOOL_SPECS[name]["label"]`，缺失回落原名 |
-| 测试 | 工具集合一致性 | 比较三处集合是否相等 |
+| prompt 工具表 | 只列启用的工具 | `tool_table(toolset)` |
+| dispatch 合法集合 | backend 只接受启用的工具 | `tool_names(toolset)` |
+| 报告标签 | 中文名称 | `tool_labels(toolset)` |
+| 测试 | 三处集合一致 | 见 §8 |
 
 **禁止手写 prompt 里的工具表**——那是"加了工具但模型不知道"的主要来源。
 
-### 3.3 tools v1（当前）
+### 3.3 toy-v1（教学用，7 个）
 
 | 工具 | 参数 | 说明 | 只读 |
 | --- | --- | --- | --- |
@@ -145,13 +145,38 @@ TOOL_SPECS = {
 | `plan` | `steps[]` | 记录计划 | ✓ |
 | `replace_text` | `path, old, new` | 唯一片段替换 | |
 | `run_tests` | — | 固定跑可见测试 | |
-| `finish` | `reason` | 提交完成，需最新测试通过 | |
+| `finish` | `reason` | 提交完成；教学模式下要求最新测试通过 | |
 
-### 3.4 tools v2（C2 目标，未实现）
+### 3.4 repo-v1（真实仓库，6 个）
 
-`bash`、`read_file`（含行区间）、`search`（正则、结果上限）、`edit`（由 `replace_text` 改名）、`git_diff`、`run_tests`、`finish`。
+| 工具 | 参数 | 说明 |
+| --- | --- | --- |
+| `list_files` | `path, limit` | 列出目录下的文件 |
+| `search_text` | `query, path, limit, case_sensitive` | 字面文本搜索 |
+| `read_lines` | `path, start, end` | 读取行区间 |
+| `apply_patch` | `patch` | unified diff；测试与配置只读，失败还原 |
+| `run_visible_tests` | `paths, timeout_seconds` | 运行最多 30 个 pytest 目标 |
+| `finish` | `reason` | 导出补丁，判定交给评测 |
 
-待定：`map_repository` 与 `find_symbol` 保留还是并入 `search`（与 R3 的工具接口实验一起决定）。
+`runtime/backends/repo.py` 已实现这 6 个动作；把它接给 agent 的 adapter 仍是待办（R3）。
+
+### 3.5 TOOLSETS 注册表
+
+`tools/toolsets.py` 是「每次 run 可用哪些工具」的唯一来源：
+
+```python
+TOOLSETS = {
+    "toy-v1":  {"backend": "toy",  "tools": (...7 个...)},
+    "repo-v1": {"backend": "repo", "tools": (...6 个...)},
+}
+```
+
+规则：
+
+- 一个 toolset 只绑定一个 backend；混用会在启动时报错。
+- 工具必须先出现在 `TOOL_SPECS`，否则 `get_toolset()` 直接拒绝。
+- 每次 run 的 `summary` 记录 `toolset` 与 `tools_enabled`。
+- 新增工具 = 加 spec、加 backend 方法、把名字加进对应 toolset；白名单不再写死在 backend。
 
 ## 4. 两人协作规则
 
@@ -245,6 +270,7 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 ```json
 {"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
  "versions": {"action": "v1", "tools": "v1", "prompt": "v1", "trajectory": "v1"},
+ "toolset": "toy-v1", "tools_enabled": ["map_repository", "..."],
  "status": "...", "stop_reason": "...", "steps": 17,
  "model_calls": 0, "tokens": {"prompt": 0, "completion": 0}, "cost_usd": 0.0,
  "elapsed_seconds": 0.0, "test_calls": 3,
@@ -311,6 +337,7 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-02 | v1 | 新增可选文件 `llm_calls.jsonl`：每次 API 调用的 messages / raw_content / error | 兼容（新文件，默认开启） |
 | 2026-11-02 | v1 | 协议明确「一步一个动作」；解析器对多动作/数组取第一个，记入 `llm.extra_actions` | 兼容（多一个字段） |
 | 2026-11-03 | v1 | `prompt` 升到 v2：规则 4 明确「参数放 args」并加正反例；`summary.versions.prompt` 改为读取 `PROMPT_VERSION` | 兼容（仅版本值变化） |
+| 2026-11-17 | v1 | 新增 toolset 层：`tools/toolsets.py` 决定每次 run 可用的工具与 backend；`prompt` 升 v3（工具表由 toolset 生成）；`summary` 增加 `toolset` / `tools_enabled` | 兼容（新增字段） |
 
 ## 10. 常见事故（本文件要防的东西）
 

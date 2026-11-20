@@ -12,14 +12,16 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # mvp/ (run_demo)
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root (hj10, tooling)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root (agent_core, tools, runtime)
 
-from hj10.agent import Action, Agent
-from hj10.llm import PROMPT_VERSION, LLMPolicy, load_env, policy_from_env
-from hj10.report import write_report
-from tooling.backends.toy import Tools
-from tooling.exec.suite import run_suite
-from tooling.specs import TOOL_SPECS, tool_labels, tool_table
+from agent_core.agent import Action, Agent
+from agent_core.llm import PROMPT_VERSION, LLMPolicy, load_env, policy_from_env
+from agent_core.report import write_report
+from runtime.backends.toy import Tools
+from runtime.exec.suite import run_suite
+from tools.specs import TOOL_SPECS
+from tools.toolsets import (DEFAULT_TOOLSET, TOOLSETS, get_toolset,
+                            tool_labels, tool_names, tool_table)
 from run_demo import FIXTURE, evaluate, run_demo
 
 
@@ -234,12 +236,29 @@ class TestInterfaceContract(unittest.TestCase):
 
     def test_tool_catalog_is_the_single_source(self):
         tools = Tools(self.run_dir / "workspace")
-        self.assertEqual(set(TOOL_SPECS), tools.allowed_tools)
-        self.assertEqual(set(TOOL_SPECS), set(tool_labels()))
-        table = tool_table()
-        for name, spec in TOOL_SPECS.items():
+        names = set(tool_names("toy-v1"))
+        self.assertEqual(names, tools.allowed_tools)
+        self.assertEqual(names, set(tool_labels("toy-v1")))
+        table = tool_table("toy-v1")
+        for name in names:
             self.assertIn(name, table)
-            self.assertIn(spec["doc"], table)
+            self.assertIn(TOOL_SPECS[name]["doc"], table)
+
+    def test_toolsets_reference_defined_tools(self):
+        for name, entry in TOOLSETS.items():
+            self.assertIn(entry["backend"], {"toy", "repo"})
+            self.assertTrue(entry["tools"])
+            self.assertEqual(len(set(entry["tools"])), len(entry["tools"]))
+            self.assertTrue(set(entry["tools"]) <= set(TOOL_SPECS))
+            self.assertEqual(tool_names(name), list(entry["tools"]))
+
+    def test_unknown_toolset_is_rejected(self):
+        with self.assertRaises(ValueError):
+            get_toolset("does-not-exist")
+
+    def test_summary_records_toolset(self):
+        self.assertEqual(self.summary["toolset"], DEFAULT_TOOLSET)
+        self.assertEqual(self.summary["tools_enabled"], tool_names(DEFAULT_TOOLSET))
 
     def test_report_labels_come_from_the_catalog(self):
         destination = Path(self.temp.name) / "labels.html"

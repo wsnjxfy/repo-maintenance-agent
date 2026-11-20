@@ -24,15 +24,16 @@ import urllib.error
 import urllib.request
 
 from .agent import Action
-from tooling.specs import TOOL_SPECS, tool_table
+from tools.toolsets import DEFAULT_TOOLSET, tool_names, tool_table
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = ""
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
-# Bump whenever SYSTEM_TEMPLATE changes, so runs stay attributable.
-PROMPT_VERSION = "v2"
+# Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
+# attributable. v3: tool table is now derived from the selected toolset.
+PROMPT_VERSION = "v3"
 
 # Presentation metadata: the model only emits tool + args (docs/interfaces.md §2.2).
 PHASE_BY_TOOL = {
@@ -42,6 +43,11 @@ PHASE_BY_TOOL = {
     "plan": "制定计划",
     "replace_text": "修改代码",
     "run_tests": "验证",
+    "list_files": "列出文件",
+    "search_text": "搜索文本",
+    "read_lines": "阅读行区间",
+    "apply_patch": "应用补丁",
+    "run_visible_tests": "验证",
     "finish": "提交结果",
 }
 
@@ -89,7 +95,7 @@ class LLMPolicy:
                  transport=None, temperature=0.0, max_tokens=4096, timeout=120,
                  max_history=6, observation_limit=1200,
                  input_price=0.0, output_price=0.0, log_path=None,
-                 json_mode="auto"):
+                 json_mode="auto", toolset=DEFAULT_TOOLSET):
         self.task = task
         self.model = model
         self.api_key = api_key
@@ -105,6 +111,7 @@ class LLMPolicy:
         self.log_path = Path(log_path) if log_path else None
         self.json_mode = json_mode if json_mode in {"auto", "on", "off"} else "auto"
         self.json_supported = True
+        self.toolset = toolset
         self.prompt_version = PROMPT_VERSION
         self.calls = 0
         self.last_usage = None
@@ -112,7 +119,7 @@ class LLMPolicy:
 
     # --- prompt -----------------------------------------------------------------
     def system_prompt(self):
-        return SYSTEM_TEMPLATE.format(tools=tool_table())
+        return SYSTEM_TEMPLATE.format(tools=tool_table(self.toolset))
 
     def _clip(self, value):
         text = json.dumps(value, ensure_ascii=False)
@@ -272,8 +279,8 @@ class LLMPolicy:
         data, extra = self._extract_json(self._content(reply))
         self.last_extra_actions = extra
         tool = data["tool"]
-        if tool not in TOOL_SPECS:
-            raise ValueError(f"unknown tool {tool!r}")
+        if tool not in tool_names(self.toolset):
+            raise ValueError(f"unknown tool {tool!r} for toolset {self.toolset!r}")
         return Action(tool, self._normalize_args(data), PHASE_BY_TOOL.get(tool, ""), "")
 
     def _cost(self, prompt_tokens, completion_tokens):
@@ -365,7 +372,8 @@ def _first_env(*names, default=""):
     return default
 
 
-def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None, **kwargs):
+def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
+                    toolset=None, **kwargs):
     """Build an LLMPolicy for any OpenAI-compatible endpoint.
 
     Environment (``.env`` or process):
@@ -395,5 +403,6 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None, **kwarg
         input_price=float(_first_env("LLM_PRICE_INPUT", "DEEPSEEK_PRICE_INPUT", default="0")),
         output_price=float(_first_env("LLM_PRICE_OUTPUT", "DEEPSEEK_PRICE_OUTPUT", default="0")),
         json_mode=_first_env("LLM_JSON_MODE", default="auto").strip().lower(),
+        toolset=toolset or _first_env("LLM_TOOLSET", default=DEFAULT_TOOLSET),
         **kwargs,
     )

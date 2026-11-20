@@ -20,7 +20,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root
 
-from tooling.backends.repo import ToolRunner, activate_run
+from runtime.backends.repo import ToolRunner, activate_run
 
 
 def digest(data):

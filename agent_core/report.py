@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tooling.specs import tool_labels
+from tools.toolsets import tool_labels
 
 
-def write_report(summary: dict, events: list[dict], destination: Path) -> None:
+def write_report(summary: dict, events: list[dict], destination: Path, labels=None) -> None:
     """Render recorded facts without executing or evaluating any agent actions.
 
     Escaping HTML-sensitive characters also protects the JSON script boundary:
@@ -22,7 +22,7 @@ def write_report(summary: dict, events: list[dict], destination: Path) -> None:
     if template.count(marker) != 1:
         raise ValueError("Report template must contain exactly one data marker")
     payload = json.dumps(
-        {"summary": summary, "events": events, "labels": tool_labels()},
+        {"summary": summary, "events": events, "labels": labels or tool_labels()},
         ensure_ascii=False, allow_nan=False
     )
     for literal, escaped in (

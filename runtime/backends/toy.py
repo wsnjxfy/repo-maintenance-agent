@@ -2,7 +2,7 @@
 
 This backend only knows the four fixture files. It exists so the agent loop can
 be exercised in about a second, and so C0/C1 evidence stays reproducible. It is
-deliberately *not* general: real repositories use ``tooling.backends.repo``.
+deliberately *not* general: real repositories use ``runtime.backends.repo``.
 """
 
 import ast
@@ -10,8 +10,8 @@ import difflib
 from pathlib import Path
 import re
 
-from tooling.exec.suite import run_suite
-from tooling.specs import TOOL_SPECS
+from runtime.exec.suite import run_suite
+from tools.toolsets import tool_names
 
 
 class Tools:
@@ -27,6 +27,8 @@ class Tools:
         self.editable = {"config.py", "client.py", "cli.py"}
         self.readable = self.editable | {"tests/test_visible.py"}
         self.finish_requires_tests = finish_requires_tests
+        self.toolset = "toy-v1"
+        self.allowed = set(tool_names(self.toolset))
         self.last_tests = None
 
     def _path(self, name, *, edit=False):
@@ -105,10 +107,10 @@ class Tools:
 
     @property
     def allowed_tools(self):
-        """The catalog is the single source of truth for dispatch."""
-        return set(TOOL_SPECS)
+        """Only the tools declared by the active toolset are dispatchable."""
+        return set(self.allowed)
 
     def dispatch(self, tool, args):
-        if tool not in TOOL_SPECS:
+        if tool not in self.allowed:
             raise ValueError(f"Unknown tool: {tool}")
         return getattr(self, tool)(**args)

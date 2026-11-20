@@ -3,7 +3,7 @@
 Sphinx 7462 是 SWE-bench 收录的一道真实修复题，用于验证这套工具。
 
 - `prepare.py` 从固定源码创建工作区，生成任务输入。
-- 仓库工具已上移到共享层 `tooling/backends/repo.py`（搜索、读取、补丁和测试操作，记录轨迹并保存最终补丁）。
+- 仓库工具已上移到共享层 `runtime/backends/repo.py`（搜索、读取、补丁和测试操作，记录轨迹并保存最终补丁）。
 - `evaluate.py` 在独立副本中应用候选补丁和验收测试。
 - `grading.py` 核对 pytest 日志和 JUnit，汇总需求与回归结果。
 
@@ -12,7 +12,7 @@ Sphinx 7462 是 SWE-bench 收录的一道真实修复题，用于验证这套工
 在仓库根目录用 Python 3.9+、Git 和 pytest 8.3.3 运行。工具测试 18 项、准备/评测测试 21 项，共 39 项；最近一次复测为 **39/39 通过**。
 
 ```sh
-python -B -m unittest discover -s tooling/tests -v
+python -B -m unittest discover -s runtime/tests -v
 python -B -m unittest discover -s experiments/sphinx_7462/tests -v
 ```
 
@@ -39,4 +39,4 @@ python -B -m experiments.sphinx_7462.evaluate `
 
 基线预期需求 **0/2**、回归 **49/49**，退出码为 `1`。用新输出目录重跑并加上 `--candidate-patch mvp/runs/7462-inputs/reference.patch`，预期需求 **2/2**、回归 **49/49**。结果见输出目录的 `evaluation.json`。
 
-准备工作区和调用工具的参数可分别用 `python -m experiments.sphinx_7462.prepare --help` 和 `python -m tooling.backends.repo --help` 查看。运行数据放在 `mvp/runs/`。[更新记录](../../CHANGELOG.md)
+准备工作区和调用工具的参数可分别用 `python -m experiments.sphinx_7462.prepare --help` 和 `python -m runtime.backends.repo --help` 查看。运行数据放在 `mvp/runs/`。[更新记录](../../CHANGELOG.md)

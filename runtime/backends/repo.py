@@ -21,8 +21,11 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
+from tools.toolsets import tool_names
+
 
 IGNORED_DIRS = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", "venv"}
+ALLOWED_TOOLS = frozenset(tool_names("repo-v1"))
 CONFIG_NAMES = {"conftest.py", "pytest.ini", "setup.cfg", "tox.ini", "pyproject.toml", "setup.py"}
 RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com" + str(n) for n in range(1, 10)} | {"lpt" + str(n) for n in range(1, 10)}
 
@@ -222,7 +225,7 @@ class ToolRunner:
                 before = _files(self.workspace, self.initial)
                 if not isinstance(args, dict):
                     raise ValueError("Tool arguments must be a JSON object")
-                allowed = {"list_files", "search_text", "read_lines", "apply_patch", "run_visible_tests", "finish"}
+                allowed = set(ALLOWED_TOOLS)
                 if action not in allowed:
                     raise ValueError("Unknown workspace tool")
                 phase = state.get("phase")

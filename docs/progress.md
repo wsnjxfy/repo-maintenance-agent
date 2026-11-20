@@ -81,12 +81,12 @@
 
 | 变更 | 从 | 到 |
 | --- | --- | --- |
-| 核心套件 | `mvp/hj10/` | `hj10/` |
-| 工具规格 | `mvp/hj10/tools.py` 的 `TOOL_SPECS` 等 | `tooling/specs.py` |
-| 玩具 backend | `mvp/hj10/tools.py` 的 `Tools` | `tooling/backends/toy.py` |
-| 真实 repo backend | `experiments/sphinx_7462/tools.py` | `tooling/backends/repo.py`（blob hash 相同） |
-| 测试执行器 | `mvp/test_runner.py` + `run_suite` | `tooling/exec/unittest_runner.py` + `tooling/exec/suite.py` |
-| 工具测试 | `experiments/.../tests/test_tools.py` | `tooling/tests/test_repo_backend.py` |
+| 核心套件 | `mvp/hj10/` | `agent_core/` |
+| 工具规格 | `mvp/hj10/tools.py` 的 `TOOL_SPECS` 等 | `tools/specs.py` |
+| 玩具 backend | `mvp/hj10/tools.py` 的 `Tools` | `runtime/backends/toy.py` |
+| 真实 repo backend | `experiments/sphinx_7462/tools.py` | `runtime/backends/repo.py`（blob hash 相同） |
+| 测试执行器 | `mvp/test_runner.py` + `run_suite` | `runtime/exec/unittest_runner.py` + `runtime/exec/suite.py` |
+| 工具测试 | `experiments/.../tests/test_tools.py` | `runtime/tests/test_repo_backend.py` |
 
 ### 行为变化（唯一一項）
 
@@ -96,5 +96,18 @@
 
 - `mvp/tests`：36 OK
 - `experiments/sphinx_7462/tests`：21 OK
-- `tooling/tests`：16/18，2 个失败与本机 `git 2.37.0` 行为有关（搬移前后 blob hash 相同，非重构造成）
+- `runtime/tests`：16/18，2 个失败与本机 `git 2.37.0` 行为有关（搬移前后 blob hash 相同，非重构造成）
+
+> 同日后续（选项 A）：把原本一个 `tooling/` 再拆成 `tools/`（只有规格）与 `runtime/`（backends + exec），理由是一个叫 tooling 的文件夹不应同时装 tools 与 backend。所有 import 已更新，测试结果不变。
+>
+> 再后续（命名）：核心套件 `hj10/` 改名为 `agent_core/`，因为 `hj10` 是项目编号而不是角色；只改 7 行 import 与文件路径，`HJ10` 显示字串与报告标记 `__HJ10_REPORT_DATA__` 保持不变。
+
+## 2026-11-17 ｜ toolset 层
+
+- 新增 `tools/toolsets.py`：`toy-v1`（7 个工具）与 `repo-v1`（6 个动作），每个 toolset 绑定一个 backend。
+- prompt 工具表、报告标签、dispatch 白名单全部由选中的 toolset 生成。
+- 删除 `runtime/backends/repo.py` 手写的允许集合，改用 `tool_names("repo-v1")`；toy backend 同理。
+- `summary` 增加 `toolset` 与 `tools_enabled`；`versions.prompt` 升到 v3（工具表由 toolset 决定）。
+- 新增 3 条守门测试：toolset 内工具必须存在于 `TOOL_SPECS`、未知 toolset 报错、summary 记录 toolset。
+- `--toolset repo-v1` 目前在 `run_demo` 会明确报错（adapter 尚未接）；`toy-v1` 行为不变。
 

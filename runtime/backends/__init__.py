@@ -15,9 +15,9 @@ class Backend(Protocol):
 def build_backend(kind, **kwargs):
     """Create a backend by name. Keep this list short and explicit."""
     if kind == "toy":
-        from tooling.backends.toy import Tools
+        from runtime.backends.toy import Tools
         return Tools(**kwargs)
     if kind == "repo":
-        from tooling.backends.repo import ToolRunner
+        from runtime.backends.repo import ToolRunner
         return ToolRunner(**kwargs)
     raise ValueError(f"Unknown backend: {kind}")
