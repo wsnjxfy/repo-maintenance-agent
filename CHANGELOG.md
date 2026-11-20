@@ -2,6 +2,35 @@
 
 每次更新单独一节，最新的放在最上面。新增记录署名统一填 `hxy`。每个文件单独一行，用仓库相对路径，写清是新增、修改还是删除，以及它在这次更新中的作用。提交或合并后补上链接。实验过程见[进度记录](docs/progress.md)。
 
+## 2026-11-20 新增 Sphinx 基线、JSON 容错、文本替换和阶段控制
+
+`hxy` · 已提交 · [hxy 分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/hxy/)
+
+基于 Charles 的目录重构 [a52d5b7](https://github.com/wsnjxfy/repo-maintenance-agent/commit/a52d5b7d6f79bd902a8399ffb394ed447e0d5451)，加入可重复运行的 Sphinx Agent 基线、严格解析失败后的 JSON 容错，以及可选的 `replace_text` 和编辑阶段控制。
+
+验证通过 37 项教学 MVP 测试、23 项仓库工具测试和 51 项 Sphinx 实验测试。MVP 使用 Python 3.12，工具和实验测试复用已有 Python 3.9.20、pytest 8.3.3 环境。模型调用使用模拟响应或注入的假传输。备份、逐项校验和测试日志位于被 Git 忽略的 `mvp/runs/`。
+
+| 变更 | 文件 | 这次改动的作用 |
+|---|---|---|
+| 新增 | `experiments/sphinx_7462/baseline.py` | 保留工作区准备、动作预算、自动日志、补丁冻结和独立验收流程，导入改用新目录。 |
+| 新增 | `experiments/sphinx_7462/edit_phases.py` | 保留定位、编辑和验证阶段，以及读取额度和验证预算预留。 |
+| 新增 | `experiments/sphinx_7462/edit_transition.py` | 保留可选的一次性编辑提醒，供既有对照实验使用。 |
+| 新增 | `experiments/sphinx_7462/tests/test_action_parsing.py` | 保留严格解析优先、JSON 容错、参数归一化和多动作反馈检查。 |
+| 新增 | `experiments/sphinx_7462/tests/test_baseline.py` | 保留模拟闭环、预算停止、失败处理、补丁导出与独立验收检查。 |
+| 新增 | `experiments/sphinx_7462/tests/test_deepseek_baseline.py` | 保留假传输下的请求、用量记录和费用预算检查。 |
+| 新增 | `experiments/sphinx_7462/tests/test_edit_phases.py` | 保留阶段切换、定向读取、编辑后验证和预算预留检查。 |
+| 新增 | `experiments/sphinx_7462/tests/test_edit_transition.py` | 保留重复读取、零匹配搜索和提醒触发时机检查。 |
+| 新增 | `hj10/action_parsing.py` | 从原本地 `mvp/hj10/` 迁入，统一 JSON 提取和参数归一化。 |
+| 新增 | `tooling/text_edit.py` | 从原本地 `mvp/hj10/` 迁入，供两个后端复用唯一片段替换。 |
+| 修改 | `hj10/llm.py` | 保留共用解析器，修正默认配置路径为仓库根目录的 `.env`。 |
+| 修改 | `tooling/backends/repo.py` | 保留 `replace_text`、共享截止时间、失败恢复、日志与补丁冻结。 |
+| 修改 | `tooling/backends/toy.py` | 接回共用文本替换，保留 Charles 的完成条件配置。 |
+| 修改 | `tooling/tests/test_repo_backend.py` | 迁入增强版工具测试，同步修改三个 mock 目标的模块路径。 |
+| 修改 | `mvp/tests/test_mvp.py` | 增加默认配置加载路径的离线回归检查。 |
+| 修改 | `experiments/sphinx_7462/README.md` | 合并原有基线说明，更新共享工具、模型适配器和测试命令的路径。 |
+| 修改 | `.github/workflows/check.yml` | 在运行工具测试前安装 pytest。 |
+| 修改 | `CHANGELOG.md` | 记录本次同步、逐文件改动和验证结果。 |
+
 ## 2026-11-06 加入 Sphinx 7462 仓库工具和独立评测
 
 `hxy` · 已提交 · [分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/codex/sphinx-7462-tools/) · [工具说明](experiments/sphinx_7462/README.md)

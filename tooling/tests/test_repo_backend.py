@@ -17,8 +17,7 @@ import sys
 import tempfile
 import time
 import unittest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root
+from unittest.mock import patch
 
 from tooling.backends.repo import ToolRunner, activate_run
 
@@ -71,7 +70,8 @@ def process_alive(pid):
 
 
 class RunFixture:
-    def __init__(self, root, git, test_source=None, max_actions=30):
+    def __init__(self, root, git, test_source=None, max_actions=30, edit_tool=None,
+                 module_source="VALUE = 1\n"):
         self.root = root
         self.workspace = root / "workspace"
         self.controller = root / "controller"
@@ -82,7 +82,7 @@ class RunFixture:
         if test_source is None:
             test_source = "from module import VALUE\n\ndef test_value():\n    assert VALUE == 1\n"
         files = {
-            "module.py": "VALUE = 1\n",
+            "module.py": module_source,
             "helper.py": "VALUE = 2\n",
             "tests/test_visible.py": test_source,
             "pytest.ini": "[pytest]\n",
@@ -109,6 +109,8 @@ class RunFixture:
             "protected_paths": ["tests/test_visible.py", "pytest.ini", "conftest.py"],
         }
         protocol = {"max_actions": max_actions, "wall_time_seconds": 1200, "test_timeout_seconds": 90}
+        if edit_tool is not None:
+            protocol["edit_tool"] = edit_tool
         state = {
             "phase": "prepared", "started_at": None, "action_count": 0,
             "event_count": 0, "last_visible_tests": None,
@@ -261,6 +263,61 @@ class TestWorkspaceTools(unittest.TestCase):
         self.assertEqual((run.workspace / "helper.py").read_text(encoding="utf-8"), "VALUE = 2\n")
         self.assertEqual(run.events[-1]["before_digest"], run.events[-1]["after_digest"])
 
+    def test_replacement_mode_edits_once_and_exports_a_round_trip_patch(self):
+        run = self.fixture(edit_tool="replace_text", module_source="VALUE = 1\r\nOTHER = 2\r\n").active()
+        args = {"path": "module.py", "old": "VALUE = 1\nOTHER = 2", "new": "VALUE = 3\nOTHER = 2"}
+        self.assert_ok(run.call("replace_text", **args))
+        event, = run.events
+        self.assertEqual((event["action"], event["args"], event["action_count"]), ("replace_text", args, 1))
+        self.assertEqual(set(event["changes"]), {"module.py"})
+        self.assertEqual((run.workspace / "module.py").read_bytes(), b"VALUE = 3\r\nOTHER = 2\r\n")
+        self.assertEqual((run.workspace / "helper.py").read_bytes(), b"VALUE = 2\n")
+
+        frozen = self.assert_ok(run.call("finish", reason="replacement complete"))
+        artifact = Path(frozen["patch"])
+        self.assertEqual(frozen["patch_sha256"], digest(artifact.read_bytes()))
+        clean = self.root / "clean-base"
+        shutil.copytree(run.baseline, clean)
+        subprocess.run([self.git, "-C", str(clean), "init", "-q"], check=True, capture_output=True)
+        subprocess.run([self.git, "-C", str(clean), "-c", "core.autocrlf=false", "apply", str(artifact)],
+                       check=True, capture_output=True)
+        self.assertEqual((clean / "module.py").read_bytes(), (run.workspace / "module.py").read_bytes())
+        self.assertEqual(run.state["action_count"], 1)
+
+    def test_replacement_rejects_nonunique_matches_and_protected_or_outside_paths(self):
+        original = "REPEAT\nREPEAT\nAAA\n"
+        run = self.fixture(edit_tool="replace_text", module_source=original).active()
+        cases = [
+            ("module.py", "REPEAT", "updated"),
+            ("module.py", "AA", "updated"),
+            ("module.py", "MISSING", "updated"),
+            ("module.py", "", "updated"),
+            ("tests/test_visible.py", "VALUE", "updated"),
+            ("pytest.ini", "[pytest]", "updated"),
+            ("../controller/base/module.py", "REPEAT", "updated"),
+            ("absent.py", "REPEAT", "updated"),
+        ]
+        for path, old, new in cases:
+            with self.subTest(path=path, old=old):
+                result = run.call("replace_text", path=path, old=old, new=new)
+                self.assertEqual(result["status"], "error", result)
+                self.assertEqual(run.events[-1]["changes"], {})
+        self.assertEqual((run.workspace / "module.py").read_text(encoding="utf-8"), original)
+        self.assertEqual((run.baseline / "module.py").read_text(encoding="utf-8"), original)
+        self.assertFalse((run.workspace / "absent.py").exists())
+
+    def test_edit_modes_reject_each_others_actions(self):
+        default_run = self.fixture().active()
+        replace_run = self.fixture(edit_tool="replace_text").active()
+        replacement = default_run.call("replace_text", path="module.py", old="VALUE = 1", new="VALUE = 3")
+        patch = replace_run.call("apply_patch", patch=patch_for("module.py", "VALUE = 1\n", "VALUE = 3\n"))
+        for run, result in ((default_run, replacement), (replace_run, patch)):
+            with self.subTest(action=result["action"]):
+                self.assertEqual(result["status"], "error", result)
+                self.assertEqual(run.state["action_count"], 0)
+                self.assertEqual(run.events[-1]["changes"], {})
+                self.assertEqual((run.workspace / "module.py").read_bytes(), b"VALUE = 1\n")
+
     def test_patch_addition_survives_finish_and_applies_to_clean_base(self):
         run = self.fixture().active()
         patch = patch_for("module.py", "VALUE = 1\n", "VALUE = 3\n")
@@ -406,6 +463,50 @@ class TestWorkspaceTools(unittest.TestCase):
         self.assertTrue(result["submission_saved"])
         self.assertEqual(result["independent_evaluation"]["status"], "not_run")
         self.assertEqual(run.state["phase"], "finished")
+
+    def test_expired_shared_deadline_logs_uncharged_action_and_allows_finish(self):
+        run = self.fixture().active()
+        deadline = time.monotonic() - 1
+        response = run.runner.dispatch("read_lines", {"path": "module.py"}, deadline=deadline)
+        self.assertEqual(response["status"], "error", response)
+        self.assertIn("wall-time", response["error"])
+        event, = run.events
+        self.assertEqual(event["action_count"], 0)
+        self.assertEqual(event["changes"], {})
+        self.assertIsNone(event["before_digest"])
+        self.assertIsNone(event["after_digest"])
+        self.assertTrue(Path(event["output_file"]).is_file())
+
+        result = self.assert_ok(run.runner.dispatch("finish", {"reason": "deadline expired"}, deadline=deadline))
+        self.assertTrue(result["submission_saved"])
+        self.assertEqual(run.state["action_count"], 0)
+        self.assertEqual(run.state["phase"], "finished")
+
+    def test_shared_deadline_caps_probe_and_recomputes_pytest_timeout(self):
+        run = self.fixture().active()
+        run.runner.config["repo"] = "sphinx-doc/sphinx"
+        current_time = 100.0
+
+        def probe(command, **kwargs):
+            nonlocal current_time
+            self.assertEqual(kwargs["timeout"], 5.0)
+            current_time = 104.0
+            return subprocess.CompletedProcess(command, 0, str(run.workspace / "module.py").encode(), b"")
+
+        def pytest_process(command, workspace, env, stdout, stderr, timeout):
+            self.assertEqual(timeout, 1.0)
+            stdout.write_bytes(b"")
+            stderr.write_bytes(b"")
+            return {"returncode": -1, "timed_out": True}
+
+        with patch("tooling.backends.repo.time.monotonic", side_effect=lambda: current_time), \
+             patch("tooling.backends.repo.subprocess.run", side_effect=probe) as probe_call, \
+             patch("tooling.backends.repo._process", side_effect=pytest_process) as pytest_call:
+            response = run.runner.dispatch("run_visible_tests", {"paths": ["tests/test_visible.py"]}, deadline=105.0)
+        probe_call.assert_called_once()
+        pytest_call.assert_called_once()
+        self.assertEqual(self.assert_ok(response)["status"], "timeout")
+        self.assertEqual(run.state["action_count"], 1)
 
     def test_timeout_keeps_logs_and_terminates_owned_process_tree(self):
         pid_file = self.root / "owned-pids.json"

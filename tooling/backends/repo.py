@@ -4,6 +4,7 @@ The parent prepares a run; only ``activate_run`` starts its solving clock.
 No model is invoked by this module. Python 3.9+ and Git are required.
 """
 import argparse
+import ast
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -21,10 +22,13 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
+from experiments.sphinx_7462.prepare import protected_source
+from tooling.text_edit import replace_unique_text
 
 IGNORED_DIRS = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", "venv"}
 CONFIG_NAMES = {"conftest.py", "pytest.ini", "setup.cfg", "tox.ini", "pyproject.toml", "setup.py"}
 RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com" + str(n) for n in range(1, 10)} | {"lpt" + str(n) for n in range(1, 10)}
+EDIT_TOOLS = ("apply_patch", "replace_text")
 
 
 def _now():
@@ -140,6 +144,15 @@ def _worker_env(workspace, python):
     return env
 
 
+def _time_left(deadline):
+    if deadline is None:
+        return float("inf")
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Trial wall-time limit reached")
+    return remaining
+
+
 def _process(command, cwd, env, stdout, stderr, timeout):
     started = time.monotonic()
     kwargs = {"start_new_session": True} if os.name != "nt" else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
@@ -178,6 +191,9 @@ class ToolRunner:
         self.controller = self.run_dir / "controller"
         self.config = json.loads((self.controller / "config.json").read_text(encoding="utf-8"))
         self.protocol = json.loads((self.controller / "protocol.json").read_text(encoding="utf-8"))
+        self.edit_tool = self.protocol.get("edit_tool", "apply_patch")
+        if self.edit_tool not in EDIT_TOOLS:
+            raise ValueError("Unknown edit tool in the workspace protocol")
         self.workspace = Path(self.config["workspace"]).resolve()
         self.baseline = Path(self.config["baseline_dir"]).resolve()
         self.initial = self.config["initial_manifest"]
@@ -200,14 +216,16 @@ class ToolRunner:
                 return True
         return False
 
-    def _git(self, args, cwd=None, data=None):
+    def _git(self, args, cwd=None, data=None, *, deadline=None):
         env = _worker_env(self.workspace, self.config["python"])
         env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0"})
         command = [self.config["git"], "-c", "core.autocrlf=false", "-c", "core.filemode=false", "-c", "core.hooksPath=" + str(self.controller / "no-hooks")] + args
         return subprocess.run(command, cwd=str(cwd or self.workspace), env=env, input=data,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=min(30, _time_left(deadline)))
 
-    def dispatch(self, action, args=None):
+    def dispatch(self, action, args=None, *, deadline=None):
+        """Use the controller's monotonic deadline for work, allowing finish afterward."""
         with _lock(self.controller):
             state_path = self.controller / "state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -219,14 +237,21 @@ class ToolRunner:
             before = {}
             response = {"action": action, "event_id": event_id}
             try:
+                if action != "finish" and deadline is not None and timer >= deadline:
+                    before = None
+                    raise TimeoutError("Trial wall-time limit reached")
                 before = _files(self.workspace, self.initial)
+                if action != "finish":
+                    _time_left(deadline)
                 if not isinstance(args, dict):
                     raise ValueError("Tool arguments must be a JSON object")
-                allowed = {"list_files", "search_text", "read_lines", "apply_patch", "run_visible_tests", "finish"}
+                allowed = {"list_files", "search_text", "read_lines", *EDIT_TOOLS, "run_visible_tests", "finish"}
                 if action not in allowed:
                     raise ValueError("Unknown workspace tool")
+                if action in EDIT_TOOLS and action != self.edit_tool:
+                    raise ValueError("Workspace edit mode permits only " + self.edit_tool)
                 phase = state.get("phase")
-                if phase == "prepared" and action in {"apply_patch", "finish"}:
+                if phase == "prepared" and action in {self.edit_tool, "finish"}:
                     raise ValueError("Run is prepared, not active; parent activation is required")
                 if phase not in {"prepared", "active"}:
                     raise ValueError("Run is not available for further operations: " + str(phase))
@@ -242,15 +267,20 @@ class ToolRunner:
                         state["action_count"] += 1
                 if action != "finish" and any(self._protected(p) for p in _changes(self.initial, before)):
                     raise ValueError("Protected tests or configuration changed outside the tools")
-                result = getattr(self, "_" + action)(state=state, **args)
+                tool = getattr(self, "_" + action)
+                if action in {self.edit_tool, "run_visible_tests"}:
+                    result = tool(state=state, deadline=deadline, **args)
+                else:
+                    result = tool(state=state, **args)
                 response.update({"status": "ok", "result": result})
-            except (ValueError, TypeError, OSError, RuntimeError, subprocess.SubprocessError, ET.ParseError) as exc:
+            except (ValueError, TypeError, OSError, RuntimeError, SyntaxError, subprocess.SubprocessError, ET.ParseError) as exc:
                 response.update({"status": "error", "error": type(exc).__name__ + ": " + str(exc)})
-            try:
-                after = _files(self.workspace, self.initial)
-            except (ValueError, OSError) as exc:
-                after = {}
-                response["audit_error"] = str(exc)
+            after = {}
+            if before is not None:
+                try:
+                    after = _files(self.workspace, self.initial)
+                except (ValueError, OSError) as exc:
+                    response["audit_error"] = str(exc)
             response["phase"] = state.get("phase")
             output_file = self.outputs / ("%04d-result.json" % event_id)
             _write_json(output_file, response)
@@ -258,7 +288,9 @@ class ToolRunner:
                      "phase": state.get("phase"), "started_at": started, "finished_at": _now(),
                      "elapsed_seconds": round(time.monotonic() - timer, 4),
                      "output_file": str(output_file), "output_sha256": _sha(output_file.read_bytes()),
-                     "before_digest": _digest(before), "after_digest": _digest(after), "changes": _changes(before, after),
+                     "before_digest": _digest(before) if before is not None else None,
+                     "after_digest": _digest(after) if before is not None else None,
+                     "changes": _changes(before, after) if before is not None else {},
                      "action_count": state.get("action_count", 0)}
             with (self.controller / "actions.jsonl").open("a", encoding="utf-8") as log:
                 log.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -309,7 +341,7 @@ class ToolRunner:
         return {"matches": matches[:limit], "total": len(matches), "truncated": len(matches) > limit,
                 "full_output": str(full_file), "full_output_sha256": _sha(full_file.read_bytes()), "binary_files_skipped": len(binary)}
 
-    def _apply_patch(self, state, patch):
+    def _apply_patch(self, state, patch, *, deadline=None):
         if not isinstance(patch, str) or not patch or len(patch.encode("utf-8")) > 2_000_000:
             raise ValueError("Expected a nonempty unified patch of at most 2MB")
         paths = set()
@@ -343,11 +375,18 @@ class ToolRunner:
             targets[rel] = target.read_bytes() if target.exists() else None
         patch_file = self.outputs / ("%04d-request.patch" % self._event_id)
         patch_file.write_bytes(patch.encode("utf-8"))
-        check = self._git(["apply", "--no-index", "--check", "--whitespace=nowarn", "-"], data=patch.encode("utf-8"))
+        patch_bytes = patch.encode("utf-8")
+        check = self._git(["apply", "--no-index", "--check", "--whitespace=nowarn", "-"],
+                          data=patch_bytes, deadline=deadline)
         if check.returncode:
             raise ValueError("Patch check failed: " + check.stderr.decode("utf-8", errors="replace"))
-        applied = self._git(["apply", "--no-index", "--whitespace=nowarn", "-"], data=patch.encode("utf-8"))
-        if applied.returncode:
+        try:
+            applied = self._git(["apply", "--no-index", "--whitespace=nowarn", "-"],
+                                data=patch_bytes, deadline=deadline)
+            error = applied.stderr.decode("utf-8", errors="replace") if applied.returncode else None
+        except subprocess.TimeoutExpired:
+            error = "Git apply exceeded its subprocess timeout"
+        if error is not None:
             for rel, content in targets.items():
                 target = self.workspace / rel
                 if content is None:
@@ -356,11 +395,38 @@ class ToolRunner:
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(content)
-            raise ValueError("Patch application failed and targets were restored: " + applied.stderr.decode("utf-8", errors="replace"))
+            raise ValueError("Patch application failed and targets were restored: " + error)
         state["last_visible_tests"] = None
         return {"changed_paths": sorted(targets), "patch": str(patch_file), "patch_sha256": _sha(patch.encode("utf-8"))}
 
-    def _run_visible_tests(self, state, paths, timeout_seconds=None):
+    def _replace_text(self, state, path, old, new, *, deadline=None):
+        target = _safe_path(self.workspace, path)
+        relative = target.relative_to(self.workspace).as_posix()
+        if self._protected(relative) or protected_source(relative) or self._protected(path.replace("\\", "/")):
+            raise ValueError("Original tests and test configuration are read-only")
+        if not target.is_file():
+            raise ValueError("Text replacement requires an existing regular file")
+        if not isinstance(old, str) or not isinstance(new, str):
+            raise ValueError("Replacement fragments must be strings")
+        before = target.read_bytes().decode("utf-8")
+        # Line reads omit terminators. Accept LF fragments in files using CRLF.
+        without_crlf = before.replace("\r\n", "")
+        if without_crlf != before and "\r" not in without_crlf and "\n" not in without_crlf:
+            old = old.replace("\r\n", "\n").replace("\n", "\r\n")
+            new = new.replace("\r\n", "\n").replace("\n", "\r\n")
+        updated = replace_unique_text(before, old, new).encode("utf-8")
+        if target.suffix.lower() == ".py":
+            ast.parse(updated, filename=relative)
+        with tempfile.TemporaryDirectory(prefix=".replace-", dir=str(target.parent)) as temporary:
+            replacement = Path(temporary) / "replacement"
+            replacement.write_bytes(updated)
+            shutil.copymode(target, replacement)
+            _time_left(deadline)
+            os.replace(replacement, target)
+            state["last_visible_tests"] = None
+        return {"changed_paths": [relative]}
+
+    def _run_visible_tests(self, state, paths, timeout_seconds=None, *, deadline=None):
         if not isinstance(paths, list) or not paths or len(paths) > 30 or not all(isinstance(p, str) for p in paths):
             raise ValueError("Provide a nonempty list of at most 30 relative pytest targets")
         for node in paths:
@@ -376,7 +442,8 @@ class ToolRunner:
         state["last_visible_tests"] = None
         if self.config.get("repo") == "sphinx-doc/sphinx":
             probe = subprocess.run([self.config["python"], "-c", "import sphinx; print(sphinx.__file__)"], cwd=str(self.workspace),
-                                   env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+                                   env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   timeout=min(20, _time_left(deadline)))
             imported = probe.stdout.decode("utf-8", errors="replace").strip()
             if probe.returncode or not imported or not Path(imported).resolve().is_relative_to(self.workspace):
                 raise ValueError("Sphinx import probe does not point to the active workspace: " + imported)
@@ -386,7 +453,8 @@ class ToolRunner:
         junit = prefix.with_suffix(".xml")
         command = [self.config["python"], "-m", "pytest", "-rA", "-vv", "--color=no", "--tb=short", "--junitxml=" + str(junit)] + paths
         before_digest = _digest(_files(self.workspace, self.initial))
-        result = _process(command, self.workspace, env, stdout, stderr, timeout_seconds)
+        result = _process(command, self.workspace, env, stdout, stderr,
+                          min(timeout_seconds, _time_left(deadline)))
         stdout_bytes = stdout.read_bytes()
         collection_matches = re.findall(r"\bcollected\s+(\d+)\s+items?\b", stdout_bytes.decode("utf-8", errors="replace"))
         counts = {"collected": int(collection_matches[-1]) if collection_matches else None,
@@ -524,7 +592,7 @@ def activate_run(run_dir):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True)
-    parser.add_argument("action", help="list_files/search_text/read_lines/apply_patch/run_visible_tests/finish")
+    parser.add_argument("action", help="list_files/search_text/read_lines/apply_patch/replace_text/run_visible_tests/finish")
     parser.add_argument("--args-json", default="{}")
     args = parser.parse_args()
     try:
