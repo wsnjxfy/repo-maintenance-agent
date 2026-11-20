@@ -2,6 +2,20 @@
 
 每次更新单独一节，最新的放在最上面。新增记录署名统一填 `hxy`。每个文件单独一行，用仓库相对路径，写清是新增、修改还是删除，以及它在这次更新中的作用。提交或合并后补上链接。实验过程见[进度记录](docs/progress.md)。
 
+## 2026-11-20 修复 Windows CI 的评测路径误判
+
+`hxy` · 已提交 · [hxy 分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/hxy/)
+
+`7552ad6` 的 Windows CI 在路径检查时混用了短路径和完整路径，误将工作区内的补丁目标判为越界。评测器在创建输出目录后统一解析完整路径，再建立工作区。
+
+新增测试在修复前均能复现误判，覆盖带父目录片段的输出路径，以及 Windows 真实 8.3 别名下的空补丁和非空候选补丁。修复后在本地 Windows 的 Python 3.12、pytest 8.3.3 环境通过全部 113 项测试，其中 MVP 37 项、仓库工具 23 项、Sphinx 实验 53 项。两平台运行结果见 [GitHub Actions](https://github.com/wsnjxfy/repo-maintenance-agent/actions?query=branch%3Ahxy)。
+
+| 变更 | 文件 | 这次改动的作用 |
+|---|---|---|
+| 修改 | `experiments/sphinx_7462/evaluate.py` | 创建输出目录后规范化路径，使工作区根目录与补丁目标使用一致的路径格式。 |
+| 修改 | `experiments/sphinx_7462/tests/test_evaluate.py` | 增加路径别名回归测试，并在读取判定结果前检查其类型，保留原始失败信息。 |
+| 修改 | `CHANGELOG.md` | 记录 Windows CI 失败原因、修复范围和验证结果。 |
+
 ## 2026-11-20 新增 Sphinx 基线、JSON 容错、文本替换和阶段控制
 
 `hxy` · 已提交 · [hxy 分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/hxy/)
