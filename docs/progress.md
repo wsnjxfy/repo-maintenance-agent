@@ -145,3 +145,14 @@
 - 新增 `runtime/tests/test_visibility.py`（6 个测试）：glob 语义、读写边界、protected、`list_files`/`manifest` 过滤。
 - 验证：`mvp` 40 OK、`runtime` 34（2 个仍是本机 git 2.37）、`experiments` 53 OK、demo 7/7。
 - 待办：toy demo 尚未改用 visibility；`tools/toolsets.py` 的 `"backend"` 字段尚未移除；production（`run_demo`/`baseline`）尚未切到 `Session + LocalEnvironment`。
+
+## 2026-11-22 ｜ M1 第 1–2 步：v2 toy demo
+
+- 新增 `mvp/toy_config.py`：`toy-v2` toolset、`Visibility`（readable 4 档、editable 3 档）、`PROTOCOL`。
+- 新增 `mvp/scripted_policy.py`：用 `list_files`/`read_lines`/`apply_patch`/`run_visible_tests`/`finish` 的教学脚本（不再用 toy 专属工具）。
+- 新增 `mvp/demo.py`：复制 fixture → `git init` + baseline commit → `LocalEnvironment` + `Session` + `Agent` + `evaluate()`，产出 `summary.json`/`final.patch`/`report.html`。
+- `tools/toolsets.py` 新增 `toy-v2`（5 个工具，backend=`local`）。
+- 新增 `mvp/tests/test_demo.py`（4 个测试）：demo 完成且 7/7+3/3、补丁包含修复、trajectory 为 v2 observation、visibility 保护可见测试。
+- CI：`pip install pytest` 移到 `mvp/tests` 之前（demo 需要 pytest）。
+- 验证：`mvp` 44 OK、`runtime` 34（2 个仍是本机 git 2.37）、`experiments` 53 OK、`python mvp/demo.py` exit 0（7/7、3/3）。
+- 待办：`run_demo.py` 改薄壳、删 `runtime/backends/toy.py`、拆 `test_mvp.py`、移除 toolset `backend` 字段、prompt v4。

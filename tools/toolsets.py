@@ -22,6 +22,16 @@ TOOLSETS = {
             "finish",
         ),
     },
+    "toy-v2": {
+        "backend": "local",
+        "tools": (
+            "list_files",
+            "read_lines",
+            "apply_patch",
+            "run_visible_tests",
+            "finish",
+        ),
+    },
     "repo-v1": {
         "backend": "repo",
         "tools": (

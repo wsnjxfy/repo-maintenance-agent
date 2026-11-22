@@ -247,7 +247,7 @@ class TestInterfaceContract(unittest.TestCase):
 
     def test_toolsets_reference_defined_tools(self):
         for name, entry in TOOLSETS.items():
-            self.assertIn(entry["backend"], {"toy", "repo"})
+            self.assertIn(entry["backend"], {"toy", "repo", "local"})
             self.assertTrue(entry["tools"])
             self.assertEqual(len(set(entry["tools"])), len(entry["tools"]))
             self.assertTrue(set(entry["tools"]) <= set(TOOL_SPECS))
