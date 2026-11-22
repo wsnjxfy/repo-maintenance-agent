@@ -312,6 +312,7 @@ def _populate_run(source_archive, run_dir, python, git, task_input, expected_sha
                    capture_output=True, timeout=30)
     subprocess.run([str(git), "-C", str(workspace), "config", "core.autocrlf", "false"],
                    check=True, capture_output=True, timeout=30)
+    protected = sorted(path for path in initial if protected_source(path))
     config = {
         "schema_version": 1,
         "run_id": run_dir.name,
@@ -323,7 +324,8 @@ def _populate_run(source_archive, run_dir, python, git, task_input, expected_sha
         "python": str(python),
         "git": str(git),
         "initial_manifest": initial,
-        "protected_paths": sorted(path for path in initial if protected_source(path)),
+        "protected_paths": protected,
+        "visibility": {"readable": ["**"], "editable": ["**"], "protected": protected},
         "prepared_at": datetime.now(timezone.utc).isoformat(),
         "source_archive_sha256": expected_sha256.lower(),
         "git_initialization": "empty_repository_without_commits_or_remotes; blocks_parent_repository_discovery",

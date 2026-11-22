@@ -28,6 +28,12 @@ class Policy(Protocol):
 class Environment(Protocol):
     """Primitives a tool handler may rely on. Path safety is the env's job."""
 
+    def is_readable(self, path: str) -> bool:
+        ...
+
+    def is_editable(self, path: str) -> bool:
+        ...
+
     def read_text(self, path: str) -> str:
         ...
 

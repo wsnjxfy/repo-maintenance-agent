@@ -25,7 +25,6 @@ class HandlerContext:
     specs: dict
     allowed: set
     outputs: Path
-    protected: callable
     python: str
     test_timeout: float
     event_id: int = 0
@@ -82,8 +81,7 @@ def apply_patch(env, ctx, patch):
     relative = parse_patch_paths(patch)
     snapshots = {}
     for name in relative:
-        if ctx.protected(name):
-            raise ValueError("Original tests and test configuration are read-only")
+        env.require_editable(name)
         if env.exists(name) and not env.is_file(name):
             raise ValueError("Patch target is not a regular file")
         snapshots[name] = env.read_bytes(name) if env.exists(name) else None
@@ -110,8 +108,7 @@ def apply_patch(env, ctx, patch):
 
 
 def replace_text(env, ctx, path, old, new):
-    if ctx.protected(path):
-        raise ValueError("Original tests and test configuration are read-only")
+    env.require_editable(path)
     if not env.exists(path) or not env.is_file(path):
         raise ValueError("Text replacement requires an existing regular file")
     if not isinstance(old, str) or not isinstance(new, str):

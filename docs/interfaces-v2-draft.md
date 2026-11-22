@@ -231,6 +231,30 @@ class Environment(Protocol):
 - **bytes/newline**：`apply_patch` 必须用 bytes 套用与还原，避免 Windows CRLF 被改成 LF、或二进制文件解码失败；纯读工具（`read_lines`/`search_text`）才用 text。
 - **Docker 的 baseline**：`export_patch(baseline)` 需要 baseline 在容器内可见。决定（r2）：`prepare` 在 workspace 内建立**一个不含 remote 的 baseline commit**（空 repo 的首个 commit，没有父历史），容器内 `git diff <commit>` 即可；不采用跨主机/容器挂载的路径。
 
+### 6.1 Visibility（实例级可见范围）
+
+「模型能读/能写哪些文件」是 **instance 的属性**，不是 backend、handler 或 toolset 的属性。
+
+```json
+"visibility": {
+  "readable": ["**"],
+  "editable": ["**"],
+  "protected": ["tests/**", "conftest.py", "requirements*.txt"]
+}
+```
+
+- 模式是相对 workspace 的 POSIX glob；`**` 跨目录，`*` 只在单段内，无斜线的模式按 basename 匹配（`conftest.py`）。
+- `readable` → `read_text` / `read_bytes` / `list_files` / `search_text`；`list_files` 必须过滤，否则模型从清单就能看到边界外的文件名。
+- `editable` → `write_text` / `write_bytes` / `delete` / `apply_patch` / `replace_text`。
+- `protected` → 可读、不可写；即使 config 漏写，`contracts.protected` 的通用规则（tests/config/requirements）仍然生效。
+- `manifest()` 只覆盖 `readable`（`protected` 必须落在 `readable` 内，否则启动时报错）。
+- toy 与 repo 的差别因此只剩 **visibility + toolset 选哪些工具**：
+
+```text
+toy:  readable = 4 个 fixture 文件，editable = 3 个
+repo: readable = **，editable = **，protected = prepare 写出的清单
+```
+
 两个实现：
 
 - `LocalEnvironment`（`runtime/local.py`）：现在；内容主要来自 `repo.py` 的 `_safe_path`/`_files`/`_process`/`_worker_env` 与 `_git`。
@@ -272,7 +296,8 @@ class Environment(Protocol):
 contracts/                # 中立层：谁都可以 import，自己不 import 项目内模块
 ├── protocols.py          # ☆ Environment / Policy / Action / ToolSpec
 ├── protected.py          # ☆ 受保护路径规则（唯一来源）
-└── patch.py              # ☆ a/ b/ 解析、拒绝 rename/copy
+├── patch.py              # ☆ a/ b/ 解析、拒绝 rename/copy
+└── visibility.py         # ☆ readable/editable/protected 的实例级 glob 规则
 
 agent_core/               # 大脑：一个回路、一个模型适配器、决策
 ├── agent.py              # ★ 唯一 Agent.run；去掉 run_tests 名称特例，改看 ok/kind/fatal
@@ -344,7 +369,7 @@ mvp/                      # 最小可用实例（R1）：越小越好
 
 0. **前置条件**：Sphinx 7462 的四个输入（`sphinx-base.tar.gz`、`record.json`、`review.json`、`reference.patch`）目前**不在本机**；垂直切片先用合成 repo（现有 `test_evaluate` / `test_repo_backend` 已有 fixture 可参考），等输入到了再换。
 1. **先冻结本文**：两人对齐 §2 依赖方向、§3 observation 契约、§6 Environment 原语集（含 bytes/delete）。
-2. **抽纯函数与中立层**：`contracts/`（protocols/protected/patch）、`runtime/fsguard.py`、`runtime/process.py`（低风险，对 repo 与 Docker 都有用）。
+2. **抽纯函数与中立层**：`contracts/`（protocols/protected/patch/visibility）、`runtime/fsguard.py`、`runtime/process.py`（低风险，对 repo 与 Docker 都有用）。
 3. **垂直切片**：一个 Task（先合成 repo）、`LocalEnvironment`、3–4 个核心 handler、统一后的 `Agent` 回路、现有 sphinx 评测。把 `repo.py` 的安全逻辑移植过去。**`baseline.py` 保留并跑，直到切片能产出等价的 `resolved`。**
 4. **Sphinx 切片**：输入到位后，用 sphinx-7462 重跑同一套；确认后删除 `baseline.py`。
 5. **重写 toy**：用新接口做最小 MVP（tiny fixture + scripted policy），作为通用性验证。若重写 toy 需要改核心层，说明接口不够通用。
@@ -365,3 +390,4 @@ mvp/                      # 最小可用实例（R1）：越小越好
 | --- | --- | --- |
 | 2026-11-22 | v2 draft | 初稿：五条变化轴与接口、单向依赖、统一 observation 契约、Environment/Session 协议、目标结构与逐文件差异、落地顺序；收敛两个回路为一个 |
 | 2026-11-22 | v2 draft r2 | 接受 review：补 `exists/delete/read_bytes/write_bytes`、`export_patch`；`fatal`/`kind` 取代 `run_tests` 名称特例；G5 改为「绑定 `executes_code` 的动作 + finish」；中立层收敛为 `contracts/`；`label`/`phase` 分离；补 Docker baseline、DeepSeek 预算吸收、strategy 接口 R3 定稿、报告模板更新；修正测试数（23/40） |
+| 2026-11-22 | v2 draft r2.1 | §6.1 新增实例级 visibility（readable/editable/protected），由 `LocalEnvironment` 在原语层强制；`list_files` 过滤、`manifest` 只覆盖 readable；toy/repo 差异收敛为 config + toolset |

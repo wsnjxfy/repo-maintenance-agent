@@ -42,7 +42,7 @@ class Session:
         self.deadline = None
         self.ctx = handlers.HandlerContext(
             specs=specs, allowed=self.allowed, outputs=self.controller / "outputs",
-            protected=env.is_protected, python=env.python,
+            python=env.python,
             test_timeout=float(self.protocol.get("test_timeout_seconds", 90)),
         )
 

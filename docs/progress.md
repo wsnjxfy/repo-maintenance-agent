@@ -127,8 +127,21 @@
 - 新增 `runtime/local.py`：`LocalEnvironment`（路径安全、读写、列档、manifest、子进程、`export_patch`）。
 - 新增 `runtime/session.py`：phase、动作预算、墙钟、`executes_code` 审计、`finish` 原子汇出。
 - 新增 `tools/handlers.py`：7 个 handler（list/read/search/patch/replace/tests/finish），只经 `env` 操作；`dispatch` 回 v2 信封（`ok`/`kind`/`fatal`）。
-- `tools/specs.py` 加 `phase`、`executes_code`、`handler`；report 的阶段名不再依赖 `PHASE_BY_TOOL`（后续切换）。
+- `tools/specs.py` 加 `phase`、`executes_code`、`handler`；`agent_core/llm.py` 仍用 `PHASE_BY_TOOL` 填 `Action.phase`，report 尚未切换。
 - `contracts/text_edit.py`：从 `runtime/` 移入，`tools/` 不再 import `runtime`。
 - `agent_core/agent.py`：支援 v2 observation（`ok`/`kind`/`fatal`/`result.accepted`），toy 旧格式仍相容。
 - 新增 `runtime/tests/test_vertical_slice.py`（5 个测试）：合成 repo 的 read→patch→test→finish、预算拒绝、受保护档拒绝、失败补丁原子性、Agent 全链。
 - 验证：`mvp` 40 OK、`runtime` 28（2 个仍是本机 git 2.37）、`experiments` 53 OK、demo 7/7。
+
+## 2026-11-22 ｜ 落地：instance visibility
+
+- 新增 `contracts/visibility.py`：`Visibility(readable, editable, protected)`，POSIX glob（`**` 跨目录、`*` 单段、无斜线按 basename）；`protected` 同时套用 `contracts.protected` 的通用规则。
+- `LocalEnvironment(visibility=...)`：
+  - `read_text`/`read_bytes` 只允许 readable；`list_files` 过滤 readable；
+  - `write_text`/`write_bytes`/`delete` 只允许 editable 且非 protected；
+  - `exists`/`is_file` 对不可读路径回 `False`；`manifest()` 只覆盖 readable。
+- `tools/handlers.py` 改用 `env.require_editable`，不再自己判断受保护路径。
+- `experiments/sphinx_7462/prepare.py` 的 `config.json` 增加 `visibility`（repo 预设 `**` + protected 清单）。
+- 新增 `runtime/tests/test_visibility.py`（6 个测试）：glob 语义、读写边界、protected、`list_files`/`manifest` 过滤。
+- 验证：`mvp` 40 OK、`runtime` 34（2 个仍是本机 git 2.37）、`experiments` 53 OK、demo 7/7。
+- 待办：toy demo 尚未改用 visibility；`tools/toolsets.py` 的 `"backend"` 字段尚未移除；production（`run_demo`/`baseline`）尚未切到 `Session + LocalEnvironment`。

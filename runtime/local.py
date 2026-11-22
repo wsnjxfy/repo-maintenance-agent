@@ -1,44 +1,64 @@
 """Local-machine Environment: filesystem, git and subprocess primitives.
 
-Path safety (traversal, symlinks/reparse points, Windows reserved names) is
-guaranteed here; handlers never re-implement it.
+Path safety (traversal, symlinks/reparse points, Windows reserved names) and
+visibility (readable/editable/protected) are guaranteed here; handlers never
+re-implement either rule.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import subprocess
 import sys
 
-from contracts.protected import is_protected as protected_rule
+from contracts.visibility import Visibility
 from runtime import fsguard, process
 
 
 class LocalEnvironment:
-    def __init__(self, workspace, *, python=None, git="git", protected_paths=(), scratch=None):
+    def __init__(self, workspace, *, python=None, git="git", protected_paths=(),
+                 visibility=None, scratch=None):
         self.workspace = Path(workspace).resolve()
         if not self.workspace.is_dir():
             raise ValueError("Workspace must be an existing directory")
         self.python = python or sys.executable
         self.git = git
         self.protected_paths = tuple(protected_paths)
+        if visibility is None:
+            visibility = Visibility(protected=tuple(protected_paths))
+        self.visibility = visibility
         self.scratch = Path(scratch) if scratch else self.workspace.parent / ".scratch"
         self.scratch.mkdir(parents=True, exist_ok=True)
         self._counter = 0
 
-    # --- path handling -----------------------------------------------------
+    # --- boundaries --------------------------------------------------------
     def resolve(self, path, allow_dot=False):
         return fsguard.safe_path(self.workspace, path, allow_dot=allow_dot)
 
+    def is_readable(self, path):
+        return self.visibility.allows_read(path)
+
+    def is_editable(self, path):
+        return self.visibility.allows_edit(path)
+
     def is_protected(self, name):
-        return protected_rule(name, self.protected_paths)
+        return not self.visibility.allows_edit(name)
+
+    def require_readable(self, path):
+        if not self.is_readable(path):
+            raise PermissionError("Path is outside the readable set: " + path)
+
+    def require_editable(self, path):
+        if not self.is_editable(path):
+            raise PermissionError("Path is read-only or outside the editable set: " + path)
 
     # --- text/bytes --------------------------------------------------------
     def read_bytes(self, path):
+        self.require_readable(path)
         return self.resolve(path).read_bytes()
 
     def write_bytes(self, path, data):
+        self.require_editable(path)
         target = self.resolve(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
@@ -50,23 +70,30 @@ class LocalEnvironment:
         self.write_bytes(path, content.encode("utf-8"))
 
     def exists(self, path):
+        if not self.is_readable(path):
+            return False
         return self.resolve(path, allow_dot=True).exists()
 
     def is_file(self, path):
+        if not self.is_readable(path):
+            return False
         return self.resolve(path, allow_dot=True).is_file()
 
     def delete(self, path):
+        self.require_editable(path)
         self.resolve(path).unlink()
 
     def list_files(self, subdir="."):
         target = self.resolve(subdir, allow_dot=True)
-        if target.is_file():
-            return [target.relative_to(self.workspace).as_posix()]
         prefix = "" if target == self.workspace else target.relative_to(self.workspace).as_posix() + "/"
-        return sorted(name for name in fsguard.files(self.workspace) if name.startswith(prefix))
+        names = [name for name in fsguard.files(self.workspace) if name.startswith(prefix)]
+        if target.is_file():
+            names = [target.relative_to(self.workspace).as_posix()]
+        return sorted(self.visibility.filter(names))
 
     def manifest(self):
-        return fsguard.files(self.workspace)
+        return {name: digest for name, digest in fsguard.files(self.workspace).items()
+                if self.is_readable(name)}
 
     # --- execution ---------------------------------------------------------
     def run(self, command, cwd=".", timeout=60, stdin=None, env_extra=None, logs=None):
