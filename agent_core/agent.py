@@ -2,8 +2,19 @@
 
 from dataclasses import dataclass, field
 import json
+import sys
 import time
 from typing import Protocol
+
+
+def _emit(message):
+    """Print progress without crashing on non-UTF-8 consoles (e.g. cp1252 CI)."""
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+        safe = message.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        print(safe, flush=True)
 
 
 @dataclass
@@ -80,7 +91,7 @@ class Agent:
                 log.flush()
                 ok = self._ok(observation)
                 detail = observation.get("status") or ("ok" if ok else "error")
-                print(f"[{step:02d}] {action.phase}: {action.tool} -> {detail}", flush=True)
+                _emit(f"[{step:02d}] {action.phase}: {action.tool} -> {detail}")
                 if not ok:
                     kind = observation.get("kind", "tool")
                     if kind in {"budget", "timeout"}:

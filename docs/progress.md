@@ -172,3 +172,10 @@
 - CI 增加 `agent_core/tests` 與 `tools/tests` 兩步。
 - 驗證：`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個仍是本機 git 2.37）、`mvp` 8 OK、`experiments` 53 OK；`mvp/demo.py` 與 `mvp/run_demo.py` 都 exit 0（7/7、3/3）。
 - 待辦：Sphinx 切片（`run.py` + `Session`）、刪舊 `ToolRunner`、`evaluation/` 頂層化、把模型接入新的 demo/runner。
+
+## 2026-11-22 ｜ CI 修正：Windows cp1252 輸出
+
+- GitHub Actions 的 Windows job 以 cp1252 作為 stdout 編碼；`Agent` 的中文進度行拋 `UnicodeEncodeError`，讓 `test_demo` 的 `setUpClass` 失敗（0 tests）。
+- `agent_core/agent.py` 加 `_emit()`：`print` 失敗時以 `errors="replace"` 重印，不再中斷回路。
+- `mvp/demo.py` 的 `run()` 開頭把 stdout 重設為 UTF-8（`errors="replace"`），涵蓋 demo 自己的中文輸出。
+- 以 `PYTHONIOENCODING=cp1252` 模擬：`mvp` 8 OK、`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK、`run_demo` exit 0。

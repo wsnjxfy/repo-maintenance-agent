@@ -47,6 +47,11 @@ def _prepare_workspace(workspace: Path) -> None:
 
 
 def run(output_root=None, max_steps=16):
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
     started = time.perf_counter()
     output_root = Path(output_root) if output_root else MVP_ROOT / "runs"
     run_id = "toyv2-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
