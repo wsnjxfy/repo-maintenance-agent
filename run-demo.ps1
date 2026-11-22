@@ -1,4 +1,4 @@
-param([switch]$OpenReport, [int]$MaxSteps = 24)
+param([switch]$OpenReport, [int]$MaxSteps = 16)
 $ErrorActionPreference = 'Stop'
 
 # Prefer an existing Python. The bundled fallback makes this machine usable
