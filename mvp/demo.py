@@ -24,7 +24,7 @@ from runtime.local import LocalEnvironment
 from runtime.session import Session
 from tools.specs import TOOL_SPECS
 from tools.toolsets import tool_labels, tool_names
-from run_demo import FIXTURE, TASK, evaluate
+from evaluation.demo_eval import FIXTURE, TASK, evaluate
 from scripted_policy import ToyV2Policy
 from toy_config import PROTOCOL, TOOLSET, VISIBILITY
 

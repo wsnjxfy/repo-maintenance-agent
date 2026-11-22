@@ -135,17 +135,15 @@ TOOL_SPECS = {
 
 **禁止手写 prompt 里的工具表**——那是"加了工具但模型不知道"的主要来源。
 
-### 3.3 toy-v1（教学用，7 个）
+### 3.3 toy-v2（教学用，5 个）
 
 | 工具 | 参数 | 说明 | 只读 |
 | --- | --- | --- | --- |
-| `map_repository` | — | AST 结构概览 | ✓ |
-| `find_symbol` | `symbol` | 定义与文本候选引用 | ✓ |
-| `read_file` | `path` | 读文件（v1 无行区间） | ✓ |
-| `plan` | `steps[]` | 记录计划 | ✓ |
-| `replace_text` | `path, old, new` | 唯一片段替换 | |
-| `run_tests` | — | 固定跑可见测试 | |
-| `finish` | `reason` | 提交完成；教学模式下要求最新测试通过 | |
+| `list_files` | `path, limit` | 列出目录下的文件 | ✓ |
+| `read_lines` | `path, start, end` | 读取行区间 | ✓ |
+| `apply_patch` | `patch` | unified diff；tests 只读，失败还原 | |
+| `run_visible_tests` | `paths, timeout_seconds` | 运行指定 pytest 目标 | |
+| `finish` | `reason` | 冻结并导出补丁，判定交给评测 | |
 
 ### 3.4 repo-v1（真实仓库，6 个）
 
@@ -166,17 +164,17 @@ TOOL_SPECS = {
 
 ```python
 TOOLSETS = {
-    "toy-v1":  {"backend": "toy",  "tools": (...7 个...)},
-    "repo-v1": {"backend": "repo", "tools": (...6 个...)},
+    "toy-v2":  {"tools": (...5 个...)},
+    "repo-v1": {"tools": (...6 个...)},
 }
 ```
 
 规则：
 
-- 一个 toolset 只绑定一个 backend；混用会在启动时报错。
+- toolset 只决定工具名；环境由 runner 选择（`local` / `docker`）。
 - 工具必须先出现在 `TOOL_SPECS`，否则 `get_toolset()` 直接拒绝。
 - 每次 run 的 `summary` 记录 `toolset` 与 `tools_enabled`。
-- 新增工具 = 加 spec、加 backend 方法、把名字加进对应 toolset；白名单不再写死在 backend。
+- 新增工具 = 加 spec、加 handler、把名字加进对应 toolset。
 
 ## 4. 两人协作规则
 
@@ -269,8 +267,8 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 
 ```json
 {"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
- "versions": {"action": "v1", "tools": "v1", "prompt": "v1", "trajectory": "v1"},
- "toolset": "toy-v1", "tools_enabled": ["map_repository", "..."],
+ "versions": {"action": "v1", "tools": "v1", "prompt": "v4", "trajectory": "v1"},
+ "toolset": "toy-v2", "tools_enabled": ["list_files", "..."],
  "status": "...", "stop_reason": "...", "steps": 17,
  "model_calls": 0, "tokens": {"prompt": 0, "completion": 0}, "cost_usd": 0.0,
  "elapsed_seconds": 0.0, "test_calls": 3,
@@ -338,6 +336,7 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-02 | v1 | 协议明确「一步一个动作」；解析器对多动作/数组取第一个，记入 `llm.extra_actions` | 兼容（多一个字段） |
 | 2026-11-03 | v1 | `prompt` 升到 v2：规则 4 明确「参数放 args」并加正反例；`summary.versions.prompt` 改为读取 `PROMPT_VERSION` | 兼容（仅版本值变化） |
 | 2026-11-17 | v1 | 新增 toolset 层：`tools/toolsets.py` 决定每次 run 可用的工具与 backend；`prompt` 升 v3（工具表由 toolset 生成）；`summary` 增加 `toolset` / `tools_enabled` | 兼容（新增字段） |
+| 2026-11-22 | v1 | `prompt` 升 v4：toy 改用 `toy-v2` 工具表（`list_files`/`read_lines`/`apply_patch`/`run_visible_tests`/`finish`），提示词范例与规则同步；toolset 移除 `backend` 字段 | 兼容（版本值与 toolset 名称变化） |
 
 ## 10. 常见事故（本文件要防的东西）
 

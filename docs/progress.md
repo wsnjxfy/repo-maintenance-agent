@@ -156,3 +156,19 @@
 - CI：`pip install pytest` 移到 `mvp/tests` 之前（demo 需要 pytest）。
 - 验证：`mvp` 44 OK、`runtime` 34（2 个仍是本机 git 2.37）、`experiments` 53 OK、`python mvp/demo.py` exit 0（7/7、3/3）。
 - 待办：`run_demo.py` 改薄壳、删 `runtime/backends/toy.py`、拆 `test_mvp.py`、移除 toolset `backend` 字段、prompt v4。
+
+## 2026-11-22 ｜ M1 第 3–5 步：切換與清理
+
+- 抽出 `mvp/evaluation/demo_eval.py`（`FIXTURE`/`TASK`/`evaluate`/`final_diff`），切斷 `demo` ↔ `run_demo` 的循環依賴。
+- `mvp/run_demo.py` 改為薄殼，實際流程在 `mvp/demo.py`；CLI 只保留 `--max-steps`/`--output-dir`/`--open`。
+- 刪除 `runtime/backends/toy.py` 與 `agent_core/policy.py`（`ScriptedPolicy` 由 `mvp/scripted_policy.py` 取代）。
+- `tools/toolsets.py`：只留 `toy-v2` / `repo-v1`，移除 `"backend"` 欄位；`DEFAULT_TOOLSET = toy-v2`。
+- 測試遷移（`mvp/tests/test_mvp.py` 已刪除）：
+  - `agent_core/tests`：22 個（LLM 16、report 1、agent 5）；
+  - `tools/tests`：4 個（catalog/toolset）；
+  - `runtime/tests`：39 個（含 `test_exec.py` 5 個、`test_visibility.py` 6 個、slice 5 個、repo 23 個）；
+  - `mvp/tests`：8 個（demo e2e、artifacts、hidden 隔離、budget、regression）。
+- `PROMPT_VERSION` 升 **v4**；SYSTEM_TEMPLATE 的範例改引用 `apply_patch`/`list_files`/`run_visible_tests`。
+- CI 增加 `agent_core/tests` 與 `tools/tests` 兩步。
+- 驗證：`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個仍是本機 git 2.37）、`mvp` 8 OK、`experiments` 53 OK；`mvp/demo.py` 與 `mvp/run_demo.py` 都 exit 0（7/7、3/3）。
+- 待辦：Sphinx 切片（`run.py` + `Session`）、刪舊 `ToolRunner`、`evaluation/` 頂層化、把模型接入新的 demo/runner。

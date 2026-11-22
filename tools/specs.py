@@ -1,9 +1,9 @@
 """Tool catalog: every tool the model may call, across all toolsets.
 
 Only *specifications* live here (name, arguments, description, labels, phase,
-audit flag, handler key). Actual execution lives in ``tools/handlers.py`` for
-the repo family and in ``runtime/backends/toy.py`` for the teaching fixture;
-which subset is exposed for a run is decided by ``tools/toolsets.py``.
+audit flag, handler key). Actual execution lives in ``tools/handlers.py``; the
+teaching demo uses the same handlers on a fixture. Which subset is exposed for
+a run is decided by ``tools/toolsets.py``.
 """
 
 TOOL_SPECS = {

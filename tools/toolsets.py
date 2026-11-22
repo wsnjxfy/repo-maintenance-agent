@@ -1,29 +1,15 @@
-"""Toolset registry: which tools are exposed in a run, and on which backend.
+"""Toolset registry: which tools are exposed in a run.
 
-A run selects one named toolset. The toolset fixes both the backend that
-executes actions and the whitelist of tool names the model may call. Prompt
-tables, report labels and dispatch validation all derive from this single
-mapping, so a tool cannot be advertised without a backend implementing it.
+A toolset only chooses tool names; the environment is selected by the runner.
+Prompt tables, report labels and dispatch validation all derive from this
+single mapping, so a tool cannot be advertised without a spec.
 """
 
 from tools.specs import TOOL_SPECS
 
 
 TOOLSETS = {
-    "toy-v1": {
-        "backend": "toy",
-        "tools": (
-            "map_repository",
-            "find_symbol",
-            "read_file",
-            "plan",
-            "replace_text",
-            "run_tests",
-            "finish",
-        ),
-    },
     "toy-v2": {
-        "backend": "local",
         "tools": (
             "list_files",
             "read_lines",
@@ -33,7 +19,6 @@ TOOLSETS = {
         ),
     },
     "repo-v1": {
-        "backend": "repo",
         "tools": (
             "list_files",
             "search_text",
@@ -45,7 +30,7 @@ TOOLSETS = {
     },
 }
 
-DEFAULT_TOOLSET = "toy-v1"
+DEFAULT_TOOLSET = "toy-v2"
 
 
 def get_toolset(name=DEFAULT_TOOLSET):

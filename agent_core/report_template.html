@@ -80,19 +80,24 @@
       if(["environment_error","test_load_error","execution_timeout"].includes(observation.status))parent.append(node("p","测试未能完成，需要根据日志检查环境或代码原因；不能直接归因。","subtle"));
     }
     function observationView(parent,tool,observation) {
+      const result=object(observation.result);
       if(has(observation.error))parent.append(node("div",observation.error,"error-box"));
       switch(tool){
+        case "list_files":{const files=list(result.files);table(parent,["文件"],files.map(file=>[str(file)]));if(result.truncated)parent.append(node("p","仅显示前 "+str(result.total,"?")+" 个；已截断。","subtle"));break;}
+        case "read_lines":{parent.append(node("p",str(result.path,"")+" 行 "+str(result.start,"?")+"–"+str(result.end,"?"),"subtle"));const text=list(result.lines).map(entry=>{const item=object(entry);return str(item.line)+": "+str(item.text);}).join("\n");code(parent,text,"code");break;}
+        case "apply_patch":{const changed=list(result.changed_paths);parent.append(node("p",changed.length?"已修改："+changed.map(str).join(", "):"未记录修改。",changed.length?"ok":"warn"));if(has(result.patch_sha256))parent.append(node("p","补丁 sha256："+str(result.patch_sha256),"subtle"));break;}
+        case "run_visible_tests":testResults(parent,result);break;
         case "map_repository":table(parent,["文件","行数","符号 · 所在行"],list(observation.files).map(file=>{const f=object(file);return [f.path,f.lines,list(f.symbols).map(symbol=>{const s=object(symbol);return str(s.kind,"")+" "+str(s.name)+" · "+str(s.line);}).join("\n")||"未记录符号"]; }));break;
         case "read_file":parent.append(node("p",observation.path,"subtle"));code(parent,observation.content,"code");break;
         case "find_symbol":parent.append(node("p","检索目标："+str(observation.symbol),"muted"));parent.append(node("h3","定义"));table(parent,["记录"],list(observation.definitions).map(entry=>[str(entry)]));parent.append(node("h3","引用"));table(parent,["记录"],list(observation.references).map(entry=>[str(entry)]));break;
         case "plan":{const items=list(observation.steps);if(!items.length){parent.append(node("p","未记录规划步骤。","muted"));break;}const ol=node("ol");items.forEach(item=>ol.append(node("li",item)));parent.append(ol);break;}
         case "replace_text":parent.append(node("p",observation.path,"subtle"));if(has(observation.changed))parent.append(node("p",observation.changed===true?"补丁已写入文件。":"本次操作未写入修改。",observation.changed===true?"ok":"warn"));diff(parent,observation.diff);break;
         case "run_tests":testResults(parent,observation);break;
-        case "finish":parent.append(node("p",typeof observation.accepted==="boolean"?(observation.accepted?"控制程序接受结束请求。":"控制程序拒绝结束请求。 "):"结束请求是否接受：未记录",observation.accepted===true?"ok":"neutral"));if(has(observation.reason))parent.append(node("p",observation.reason));parent.append(node("p","接受结束请求只表示流程停止；最终是否通过独立验收，请查看页尾。","subtle"));break;
+        case "finish":{const accepted=has(result.accepted)?result.accepted:observation.accepted;const reason=has(result.reason)?result.reason:observation.reason;parent.append(node("p",typeof accepted==="boolean"?(accepted?"控制程序接受结束请求。":"控制程序拒绝结束请求。"):"结束请求是否接受：未记录",accepted===true?"ok":"neutral"));if(has(reason))parent.append(node("p",reason));parent.append(node("p","接受结束请求只表示流程停止；最终是否通过独立验收，请查看页尾。","subtle"));break;}
         default:code(parent,observation);
       }
     }
-    function eventMark(event){const observation=object(object(event).observation);if(has(observation.error))return ["错误","bad"];if(has(observation.status))return [statusLabel(observation.status),tone(observation.status)];return ["",""];}
+    function eventMark(event){const observation=object(object(event).observation);const result=object(observation.result);if(has(observation.error))return ["错误","bad"];if(has(result.status))return [statusLabel(result.status),tone(result.status)];if(observation.ok===false)return ["错误","bad"];return ["",""];}
     function render(index){
       selected=Math.max(0,Math.min(index,Math.max(0,events.length-1)));
       document.querySelectorAll(".step-button").forEach((button,i)=>{if(i===selected)button.setAttribute("aria-current","step");else button.removeAttribute("aria-current");});

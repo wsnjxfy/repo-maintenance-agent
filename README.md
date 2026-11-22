@@ -32,15 +32,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
-| `--max-steps N` | 24 | 工具调用步数上限；耗尽 → `budget_exhausted`，退出码 1 |
+| `--max-steps N` | 16 | 决策步数上限；耗尽 → `budget_exhausted`，退出码 1 |
 | `--output-dir PATH` | `mvp/runs` | run 目录的父层（仍会建唯一子目录） |
 | `--open` | 关 | 跑完用浏览器打开 `report.html` |
-| `--model NAME` | 无 | 使用指定的 OpenAI 兼容模型，临时覆盖 `.env` 的 `LLM_MODEL` |
-| `--use-llm` | 关 | 直接使用 `.env` 的 `LLM_MODEL` / `LLM_API_KEY` |
-| `--toolset NAME` | `toy-v1` | 本次可用的工具集（`toy-v1` / `repo-v1`） |
-| `--no-llm-log` | 关 | 不写 `llm_calls.jsonl` |
 
-不指定 `--model` 或 `--use-llm` 时运行预设脚本，不产生模型调用。端点、JSON 模式与价格见 `.env.example`；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
+当前 demo 只运行脚本策略，不调用模型；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
 
 ## 演示内容
 
@@ -68,41 +64,49 @@ python mvp/run_demo.py --max-steps 3
 
 | 文件 | 关注的问题 |
 | --- | --- |
-| `mvp/run_demo.py` | 复制任务工作区、运行流程、最后独立验收 |
+| `mvp/demo.py` | 复制 fixture、建 `LocalEnvironment`/`Session`、跑 `Agent`、最后独立验收 |
+| `mvp/run_demo.py` | 兼容 CLI 薄壳（`python mvp/run_demo.py`） |
+| `mvp/toy_config.py` | toy 的 visibility、toolset 与 protocol |
+| `mvp/scripted_policy.py` | 教学脚本决策 |
 | `agent_core/agent.py` | 模型/策略怎样与工具交替执行，何时停止 |
 | `agent_core/llm.py` | OpenAI 兼容适配器：prompt、解析、用量与调用日志 |
-| `agent_core/policy.py` | 预设教学决策；`--use-llm` 时由真实模型取代 |
 | `tools/specs.py` | 工具目录：名称、参数、说明（prompt 与报告标签的唯一来源） |
-| `tools/toolsets.py` | 工具集：每次 run 可用哪些工具、绑定哪个 backend |
-| `runtime/backends/toy.py` | 教学 backend：只作用于 4 档 fixture |
-| `runtime/backends/repo.py` | 真实 repo backend：6 个动作、动作预算、补丁导出 |
+| `tools/toolsets.py` | 工具集：每次 run 可用哪些工具（不绑定 backend） |
+| `tools/handlers.py` | 工具语义：参数校验、受保护路径、结果整理；操作委派给 env |
+| `runtime/local.py` | `LocalEnvironment`：路径安全、visibility、读写、子进程、补丁导出 |
+| `runtime/session.py` | 预算、墙钟、完整性审计、`finish` 冻结 |
+| `runtime/backends/repo.py` | 旧 `ToolRunner`（Sphinx 切片前保留） |
 | `runtime/exec/` | 新进程运行 unittest，返回结构化测试结果 |
 | `agent_core/report.py` / `report_template.html` | 将实际轨迹呈现为离线报告 |
 | `mvp/fixtures/timeout_demo/` | 保留初始缺陷的三文件教学仓库及公开测试 |
 | `mvp/evaluation/hidden_timeout_tests.py` | 只供独立评测器使用的示范验收检查 |
 | `experiments/sphinx_7462/` | 单题实验台：工作区准备、独立评测与判定 |
 
-建议先读 `agent_core/agent.py`，再对应报告看每一次 `Action → observation`，最后看 `runtime/backends/` 的执行实现。源码注释中的 `Policy.next_action(history)` 是接入模型的接口位置。
+建议先读 `agent_core/agent.py`，再对应报告看每一次 `Action → observation`，最后看 `tools/handlers.py` 与 `runtime/local.py`。源码注释中的 `Policy.next_action(history)` 是接入模型的接口位置。
 
 ## 运行产物
 
-- `workspace/`：本轮修改后的仓库副本。
+- `workspace/`：本轮修改后的仓库副本（含 baseline commit）。
 - `task.txt`：本轮任务说明。
 - `trajectory.jsonl`：每一步的意图、工具参数、实际反馈与耗时。
-- `final.patch`：初始代码到最终代码的统一 diff。
-- `summary.json`：停止状态、模型调用次数、token 与费用、评测和耗时。
-- `llm_calls.jsonl`：仅模型运行；每次 API 调用的完整请求与原始响应（`--no-llm-log` 可关闭）。
+- `final.patch`：初始代码到最终代码的统一 diff（由 `Session.finish` 导出）。
+- `summary.json`：停止状态、步数/动作数、toolset、env、visibility、评测和耗时。
+- `controller/`：`state.json`、`actions.jsonl`、`submission/` 等运行记录。
 - `report.html`：可直接打开的中文轨迹浏览器。
 
 运行目录默认不提交到 Git。原始 fixture 里的测试会失败，这是任务的起点；维护系统自身的检查请运行：
 
 ```sh
+python -B -m unittest discover -s agent_core/tests -v
+python -B -m unittest discover -s tools/tests -v
+python -B -m unittest discover -s runtime/tests -v
 python -B -m unittest discover -s mvp/tests -v
+python -B -m unittest discover -s experiments/sphinx_7462/tests -v
 ```
 
 ## 已有边界与下一步
 
-当前仅支持这个受信任的教学仓库。工具按文件名单限制读取和编辑，禁止改测试；测试在独立 Python 进程中执行。这些边界**不构成操作系统级沙箱**，不要将本版直接用于运行任意外部仓库。
+当前仅支持这个受信任的教学仓库。模型可读/可写哪些文件由 `mvp/toy_config.py` 的 `Visibility` 决定（tests 只读）；测试在独立 Python 进程中执行。这些边界**不构成操作系统级沙箱**，不要将本版直接用于运行任意外部仓库。
 
 评测源码不进入任务工作区，也不通过工具或反馈交给策略；它随仓库公开，目的是展示独立验证的组织方式，不能作为正式研究中的保密测试集。教学策略事先知道样例修法，也不能用于评估检索质量。
 
