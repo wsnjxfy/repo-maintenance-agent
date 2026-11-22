@@ -208,6 +208,7 @@ def evaluate(source_archive, record_path, review_manifest, output_dir, python, g
     if len(candidate) > 2_000_000:
         raise ValueError("Candidate patch exceeds the 2MB development-trial limit")
     output_dir.mkdir(parents=True, exist_ok=False)
+    output_dir = output_dir.resolve(strict=True)
     workspace = output_dir / "workspace"
     result = {"schema_version": 1, "instance_id": TASK_ID, "repo": REPOSITORY,
               "base_commit": BASE_COMMIT, "status": "error", "resolved": False,

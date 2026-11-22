@@ -1,5 +1,6 @@
 """Independent evaluator checks on synthetic, answer-free repositories only."""
 
+import ctypes
 import difflib
 import hashlib
 import io
@@ -235,6 +236,57 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue(result["grading"]["execution_valid"], result)
         self.assertEqual((result["grading"]["f2p_passed"], result["grading"]["p2p_passed"]), (0, 1))
 
+    def test_output_directory_with_parent_segments_is_canonicalized(self):
+        folder, options, candidate = self.fixture()
+        parent = folder / "path-parent"
+        parent.mkdir()
+        for label, patch, expected in (("base", None, 0), ("fixed", candidate, 1)):
+            with self.subTest(candidate=label):
+                output = parent / ".." / label
+                result = evaluate(**dict(options, output_dir=output, candidate_patch=patch))
+                self.assertEqual(result["status"], "completed", result)
+                self.assertEqual(result["resolved"], bool(expected), result)
+                self.assertEqual(
+                    (result["grading"]["f2p_passed"], result["grading"]["p2p_passed"]),
+                    (expected, 1),
+                )
+                workspace = output.resolve() / "workspace"
+                self.assertEqual(result["workspace"], str(workspace))
+                self.assertTrue(all(event["cwd"] == str(workspace) for event in result["events"]))
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows 8.3 path aliases")
+    def test_windows_short_output_path_has_same_grading_as_full_path(self):
+        folder, options, candidate = self.fixture()
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        get_short_path = kernel.GetShortPathNameW
+        get_short_path.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+        get_short_path.restype = ctypes.c_uint
+        length = get_short_path(str(folder.resolve()), None, 0)
+        if not length:
+            self.skipTest("Windows 8.3 path aliases are unavailable for this directory")
+        buffer = ctypes.create_unicode_buffer(length)
+        written = get_short_path(str(folder.resolve()), buffer, length)
+        self.assertGreater(written, 0)
+        self.assertLess(written, length)
+        short_folder = Path(buffer.value)
+        if short_folder == short_folder.resolve():
+            self.skipTest("The filesystem returned a canonical path without an 8.3 alias")
+
+        for label, patch, expected in (("base", None, 0), ("fixed", candidate, 1)):
+            with self.subTest(candidate=label):
+                results = []
+                for kind, parent in (("short", short_folder), ("full", folder.resolve())):
+                    output = parent / (label + "-" + kind)
+                    result = evaluate(**dict(options, output_dir=output, candidate_patch=patch))
+                    self.assertEqual(result["status"], "completed", result)
+                    self.assertEqual(result["workspace"], str(output.resolve() / "workspace"))
+                    results.append((
+                        result["resolved"],
+                        result["grading"]["f2p_passed"],
+                        result["grading"]["p2p_passed"],
+                    ))
+                self.assertEqual(results, [(bool(expected), expected, 1)] * 2)
+
     def test_bad_candidate_and_conflicting_test_patch_stop_before_pytest(self):
         for stage in ["candidate", "test_patch"]:
             with self.subTest(stage=stage):
@@ -286,6 +338,7 @@ class EvaluationTests(unittest.TestCase):
                 self.assertFalse(result["resolved"], result)
                 self.assertTrue((options["output_dir"] / "evaluation.json").exists())
                 self.assertIn("grading", result)
+                self.assertIsInstance(result["grading"], dict, result)
                 self.assertFalse(result["grading"]["resolved"], result)
 
 

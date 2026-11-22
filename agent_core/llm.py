@@ -23,13 +23,14 @@ import time
 import urllib.error
 import urllib.request
 
+from .action_parsing import extract_json, normalize_args, strip_fence
 from .agent import Action
 from tools.toolsets import DEFAULT_TOOLSET, tool_names, tool_table
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = ""
-ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 # Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
 # attributable. v3: tool table is now derived from the selected toolset.
@@ -194,86 +195,9 @@ class LLMPolicy:
         message = choices[0].get("message") or {}
         return message.get("content") or ""
 
-    @staticmethod
-    def _strip_fence(text):
-        stripped = (text or "").strip()
-        if stripped.startswith("```"):
-            _, _, body = stripped.partition("\n")
-            stripped = body if body else stripped[3:]
-            if stripped.rstrip().endswith("```"):
-                stripped = stripped.rstrip()[:-3]
-        return stripped.strip()
-
-    @classmethod
-    def _extract_json(cls, text):
-        """Accept bare JSON, fenced JSON, JSON in prose, and multiple objects.
-
-        Returns ``(first_value, extra_count)``; ``extra_count`` is the number of
-        additional JSON values the model emitted in the same reply. The first
-        value wins, so one protocol violation cannot abort the whole run.
-        """
-        stripped = cls._strip_fence(text)
-        try:
-            value = json.loads(stripped)
-        except json.JSONDecodeError:
-            value = None
-        if value is not None:
-            if isinstance(value, list):
-                items = [item for item in value if isinstance(item, dict)]
-                if not items:
-                    return value, 0
-                return items[0], max(len(items) - 1, 0)
-            return value, 0
-        decoder = json.JSONDecoder()
-        first, extra, index = None, 0, 0
-        while index < len(stripped):
-            start = stripped.find("{", index)
-            if start == -1:
-                break
-            try:
-                value, end = decoder.raw_decode(stripped, start)
-            except json.JSONDecodeError:
-                index = start + 1
-                continue
-            if first is None:
-                first = value
-            else:
-                extra += 1
-            index = end
-        if first is None:
-            raise json.JSONDecodeError("No JSON object found", stripped, 0)
-        return first, extra
-
-    @staticmethod
-    def _normalize_args(data):
-        """Accept ``args`` nesting, an ``arguments`` JSON string, or top-level keys.
-
-        Models that follow the function-calling convention often put the tool
-        parameters at the top level (``{"tool": "plan", "steps": [...]}``).
-        Accepting both shapes avoids a fatal-looking tool error for what is only
-        a formatting preference.
-        """
-        args = data.get("args")
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except json.JSONDecodeError:
-                args = None
-        if not isinstance(args, dict) or not args:
-            arguments = data.get("arguments")
-            if isinstance(arguments, str):
-                try:
-                    arguments = json.loads(arguments)
-                except json.JSONDecodeError:
-                    arguments = None
-            if isinstance(arguments, dict) and arguments:
-                args = arguments
-        if not isinstance(args, dict) or not args:
-            loose = {key: value for key, value in data.items()
-                     if key not in {"tool", "args", "arguments"}}
-            if loose:
-                args = loose
-        return args if isinstance(args, dict) else {}
+    _strip_fence = staticmethod(strip_fence)
+    _extract_json = staticmethod(extract_json)
+    _normalize_args = staticmethod(normalize_args)
 
     def _parse(self, reply):
         data, extra = self._extract_json(self._content(reply))

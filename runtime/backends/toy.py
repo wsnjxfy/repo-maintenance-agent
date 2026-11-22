@@ -11,8 +11,8 @@ from pathlib import Path
 import re
 
 from runtime.exec.suite import run_suite
+from runtime.text_edit import replace_unique_text
 from tools.toolsets import tool_names
-
 
 class Tools:
     """Only expose known toy files. Tests cannot be edited by the policy.
@@ -80,11 +80,7 @@ class Tools:
     def replace_text(self, path, old, new):
         destination = self._path(path, edit=True)
         before = destination.read_text(encoding="utf-8")
-        if not old or before.count(old) != 1:
-            raise ValueError("Patch requires exactly one matching old fragment")
-        after = before.replace(old, new, 1)
-        if after == before:
-            raise ValueError("Patch does not change the file")
+        after = replace_unique_text(before, old, new)
         ast.parse(after, filename=path)  # Reject syntax errors before writing.
         destination.write_text(after, encoding="utf-8", newline="\n")
         self.last_tests = None  # A new patch invalidates earlier test evidence.

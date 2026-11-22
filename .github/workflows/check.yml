@@ -13,6 +13,6 @@ jobs:
           python-version: '3.12'
       - run: python -B -m unittest discover -s mvp/tests -v
       - run: python -B mvp/run_demo.py
-      - run: python -B -m unittest discover -s runtime/tests -v
       - run: python -m pip install pytest==8.3.3
+      - run: python -B -m unittest discover -s runtime/tests -v
       - run: python -B -m unittest discover -s experiments/sphinx_7462/tests -v
