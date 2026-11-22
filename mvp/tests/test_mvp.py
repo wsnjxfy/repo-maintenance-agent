@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # mvp/ (run_demo)
@@ -283,6 +284,20 @@ class TestInterfaceContract(unittest.TestCase):
 
 class TestLLMPolicy(unittest.TestCase):
     """Adapter behavior with a fake transport; no network is touched."""
+
+    def test_default_env_path_points_to_repository_root(self):
+        expected = Path(__file__).resolve().parents[2] / ".env"
+        environment = {
+            "LLM_API_KEY": "offline-test-key",
+            "LLM_MODEL": "offline-test-model",
+            "LLM_BASE_URL": "https://example.test/v1",
+        }
+        with mock.patch.dict(os.environ, environment, clear=True), \
+             mock.patch("agent_core.llm.load_env") as loader:
+            policy = policy_from_env("t")
+        loader.assert_called_once_with(expected)
+        self.assertEqual(policy.api_key, "offline-test-key")
+        self.assertEqual(policy.endpoint, "https://example.test/v1/chat/completions")
 
     @staticmethod
     def reply(content, prompt=10, completion=5):
