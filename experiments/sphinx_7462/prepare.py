@@ -6,7 +6,6 @@ All runtime locations are explicit; no credentials are read or written.
 
 import argparse
 from datetime import datetime, timezone
-import fnmatch
 import hashlib
 import json
 import os
@@ -16,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+from contracts.protected import CONFIG_NAMES, protected_source
 
 
 TASK_ID = "sphinx-doc__sphinx-7462"
@@ -23,10 +23,6 @@ REPOSITORY = "sphinx-doc/sphinx"
 BASE_COMMIT = "b3e26a6c851133b82b50f4b68b53692076574d13"
 SOURCE_SHA256 = "f4863f25cc280ec7aa4fb1a9420f019c622cc3b3a949bd781639e749d4f31efc"
 INPUT_FIELDS = ("instance_id", "repo", "base_commit", "problem_statement")
-CONFIG_NAMES = {
-    "conftest.py", "pytest.ini", "setup.cfg", "tox.ini", "pyproject.toml",
-    "setup.py", "MANIFEST.in", ".coveragerc", "pip.conf", "pip.ini",
-}
 
 
 def digest(path):
@@ -55,16 +51,6 @@ def manifest(root):
         if path.is_file():
             result[relative.as_posix()] = digest(path)
     return result
-
-
-def protected_source(path):
-    parts = tuple(part.casefold() for part in PurePosixPath(path).parts)
-    name = parts[-1]
-    return (
-        "tests" in parts[:-1]
-        or name in {item.casefold() for item in CONFIG_NAMES}
-        or fnmatch.fnmatch(name.lower(), "requirements*.txt")
-    )
 
 
 def checked_members(archive):

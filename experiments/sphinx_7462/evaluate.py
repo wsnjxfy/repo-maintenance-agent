@@ -18,12 +18,14 @@ import time
 
 from experiments.sphinx_7462.prepare import (
     BASE_COMMIT, REPOSITORY, SOURCE_SHA256, TASK_ID,
-    digest, extract_source, manifest, probe_environment, protected_source,
+    digest, extract_source, manifest, probe_environment,
 )
-from runtime.backends.repo import (
-    IGNORED_DIRS, _changes, _digest, _files, _process, _safe_path,
-    _worker_env, _write_json,
-)
+from contracts.patch import parse_patch_paths
+from contracts.protected import is_protected
+from runtime.backends.repo import _write_json
+from runtime.fsguard import (IGNORED_DIRS, changes as _changes, digest as _digest,
+                             files as _files, safe_path as _safe_path)
+from runtime.process import process as _process, worker_env as _worker_env
 
 
 def _now():
@@ -73,57 +75,26 @@ def _validated_record(record, review):
 def _patch_paths(body, workspace):
     """Validate Git patch paths before letting Git access the workspace.
 
-    Only regular-file, a/ b/-prefixed Git patches are accepted. Renames, copies,
-    quoted/whitespace paths and symlinks are intentionally unsupported here.
+    Parsing rules live in contracts.patch; this wrapper adds the evaluator's
+    workspace-boundary and generated-metadata checks.
     """
     try:
         text = body.decode("utf-8")
     except UnicodeError as exc:
         raise ValueError("Patch is not UTF-8 Git unified diff") from exc
-    paths = set()
-    saw_diff = False
-    in_header = False
-    for line in text.splitlines():
-        if line.startswith("diff --git "):
-            parts = line.split()
-            if len(parts) != 4 or any('"' in value for value in parts[2:]):
-                raise ValueError("Quoted or whitespace patch paths are unsupported")
-            paths.update(parts[2:])
-            saw_diff = True
-            in_header = True
-        elif line.startswith(("rename from ", "rename to ", "copy from ", "copy to ")):
-            raise ValueError("Rename/copy patches are unsupported")
-        elif in_header and line.startswith(("old mode ", "new mode ", "new file mode ", "deleted file mode ")):
-            if line.split()[-1] not in {"100644", "100755"}:
-                raise ValueError("Only regular-file patches are allowed")
-        elif in_header and line.startswith(("--- ", "+++ ")):
-            value = line[4:].split("\t", 1)[0]
-            if value != "/dev/null":
-                paths.add(value)
-        elif line.startswith("@@"):
-            in_header = False
-    if not saw_diff or not paths:
-        raise ValueError("Expected a Git unified patch with file headers")
     relative = set()
-    for value in paths:
-        if not value.startswith(("a/", "b/")):
-            raise ValueError("Patch paths must have a/ or b/ prefixes")
-        name = value[2:]
+    for name in parse_patch_paths(text, strict=True):
         _safe_path(workspace, name)
         if any(part.casefold() in IGNORED_DIRS for part in name.replace("\\", "/").split("/")):
             raise ValueError("Patch targets generated metadata")
         if name.casefold().endswith((".pyc", ".pyo")) or name.casefold() == ".coverage":
             raise ValueError("Patch targets generated metadata")
-        relative.add(name.replace("\\", "/"))
+        relative.add(name)
     return sorted(relative)
 
 
 def _protected(name):
-    parts = name.replace("\\", "/").casefold().split("/")
-    leaf = parts[-1]
-    return (protected_source(name)
-            or any(part in {"test", "tests", "testing"} for part in parts[:-1])
-            or leaf.startswith("test_") or leaf.endswith("_test.py") or leaf == "test.py")
+    return is_protected(name)
 
 
 class _Evaluation:

@@ -30,6 +30,24 @@ class Agent:
         self.max_steps = max_steps
         self.max_tool_errors = max_tool_errors
 
+    @staticmethod
+    def _ok(observation):
+        """v2 uses ``ok``; legacy backends signal failure with an ``error`` key."""
+        value = observation.get("ok")
+        return "error" not in observation if value is None else bool(value)
+
+    @staticmethod
+    def _result(observation):
+        result = observation.get("result")
+        return result if isinstance(result, dict) else {}
+
+    @classmethod
+    def _fatal(cls, observation):
+        if observation.get("fatal"):
+            return True
+        status = cls._result(observation).get("status", observation.get("status"))
+        return status in {"environment_error", "test_load_error", "execution_timeout"}
+
     def run(self, policy: Policy, trajectory_path):
         history = []
         status, reason = "budget_exhausted", "已达到工具调用步数上限。"
@@ -48,7 +66,8 @@ class Agent:
                 try:
                     observation = self.tools.dispatch(action.tool, action.args)
                 except Exception as exc:
-                    observation = {"error": f"{type(exc).__name__}: {exc}"}
+                    observation = {"ok": False, "tool": action.tool,
+                                   "error": f"{type(exc).__name__}: {exc}", "kind": "tool"}
                 event = {"step": step, "phase": action.phase, "intent": action.intent,
                          "action": {"tool": action.tool, "args": action.args},
                          "observation": observation,
@@ -59,23 +78,32 @@ class Agent:
                 history.append(event)
                 log.write(json.dumps(event, ensure_ascii=False) + "\n")
                 log.flush()
-                detail = observation.get("status", "error" if "error" in observation else "ok")
+                ok = self._ok(observation)
+                detail = observation.get("status") or ("ok" if ok else "error")
                 print(f"[{step:02d}] {action.phase}: {action.tool} -> {detail}", flush=True)
-                if "error" in observation and action.tool != "run_tests":
+                if not ok:
+                    kind = observation.get("kind", "tool")
+                    if kind in {"budget", "timeout"}:
+                        status = "budget_exhausted"
+                        reason = observation.get("error") or "动作预算或墙钟耗尽。"
+                        break
                     tool_errors += 1
                     if tool_errors >= self.max_tool_errors:
                         status = "policy_failed"
                         reason = (f"连续 {tool_errors} 次工具错误，最后一条："
-                                  f"{observation['error']}")
+                                  f"{observation.get('error', '')}")
                         break
                     # Recoverable: the error stays in history so the policy can correct it.
                     continue
                 tool_errors = 0
-                if observation.get("status") in {"environment_error", "test_load_error", "execution_timeout"}:
+                if self._fatal(observation):
                     status, reason = "incomplete", "测试未能完成，已停止；需根据日志判断环境或代码原因。"
                     break
                 if action.tool == "finish":
-                    status = "completed" if observation["accepted"] else "incomplete"
-                    reason = observation["reason"]
+                    result = self._result(observation)
+                    accepted = observation.get("accepted", result.get("accepted"))
+                    reason = (observation.get("reason") or result.get("reason")
+                              or result.get("stop_reason") or "已提交完成请求。")
+                    status = "incomplete" if accepted is False else "completed"
                     break
         return history, status, reason

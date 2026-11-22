@@ -10,26 +10,26 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 import re
 import shutil
-import signal
-import stat
 import subprocess
-import sys
 import tempfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
 
+from contracts.patch import parse_patch_paths
+from contracts.protected import is_protected, protected_source
+from runtime.fsguard import (IGNORED_DIRS, changes as _changes, digest as _digest,
+                             display as _display, files as _files,
+                             safe_path as _safe_path)
+from runtime.process import (process as _process, time_left as _time_left,
+                             worker_env as _worker_env)
+from contracts.text_edit import replace_unique_text
 from tools.toolsets import tool_names
-from experiments.sphinx_7462.prepare import protected_source
-from runtime.text_edit import replace_unique_text
 
-IGNORED_DIRS = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".venv", "venv"}
 ALLOWED_TOOLS = frozenset(tool_names("repo-v1"))
-CONFIG_NAMES = {"conftest.py", "pytest.ini", "setup.cfg", "tox.ini", "pyproject.toml", "setup.py"}
-RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com" + str(n) for n in range(1, 10)} | {"lpt" + str(n) for n in range(1, 10)}
 EDIT_TOOLS = ("apply_patch", "replace_text")
 
 
@@ -63,129 +63,6 @@ def _lock(controller):
         path.unlink()
 
 
-def _is_link(path):
-    info = path.lstat()
-    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
-
-
-def _safe_path(root, name, allow_dot=False):
-    if not isinstance(name, str) or not name or any(ord(c) < 32 for c in name):
-        raise ValueError("Expected a nonempty relative path")
-    name = name.replace("\\", "/")
-    win = PureWindowsPath(name)
-    if win.drive or win.root or Path(name).is_absolute() or ":" in name:
-        raise ValueError("Absolute paths and drive paths are not allowed")
-    parts = name.split("/")
-    if any(p == ".." for p in parts) or any(p.casefold() in IGNORED_DIRS for p in parts):
-        raise ValueError("Path is outside the exposed workspace")
-    if name == "." and allow_dot:
-        return root
-    clean = [p for p in parts if p not in ("", ".")]
-    if not clean:
-        raise ValueError("A file or subdirectory path is required")
-    if any(p.endswith((".", " ")) or p.split(".")[0].casefold() in RESERVED_NAMES for p in clean):
-        raise ValueError("Windows path aliases and reserved device names are not exposed")
-    target = root.joinpath(*clean)
-    cursor = root
-    for component in clean:
-        cursor = cursor / component
-        if cursor.exists() or cursor.is_symlink():
-            if _is_link(cursor):
-                raise ValueError("Links and reparse points are not exposed")
-    resolved = target.resolve()
-    if not resolved.is_relative_to(root):
-        raise ValueError("Path escapes the workspace")
-    return resolved
-
-
-def _files(root, initial=None):
-    initial = initial or {}
-    found = {}
-    for directory, dirs, names in os.walk(str(root), followlinks=False):
-        folder = Path(directory)
-        for name in list(dirs):
-            path = folder / name
-            if _is_link(path):
-                raise ValueError("Workspace contains a link or reparse point: " + str(path.relative_to(root)))
-        dirs[:] = sorted(d for d in dirs if d.casefold() not in IGNORED_DIRS)
-        for name in sorted(names):
-            path = folder / name
-            rel = path.relative_to(root).as_posix()
-            if _is_link(path):
-                raise ValueError("Workspace contains a link or reparse point: " + rel)
-            if rel not in initial and (name.endswith((".pyc", ".pyo")) or name == ".coverage"):
-                continue
-            if path.is_file():
-                found[rel] = _sha(path.read_bytes())
-    return found
-
-
-def _digest(manifest):
-    return _sha(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-
-
-def _display(raw, limit):
-    text = raw.decode("utf-8", errors="replace")
-    if len(text) <= limit:
-        return text, False
-    half = limit // 2
-    return text[:half] + "\n[output truncated; full bytes retained in log]\n" + text[-half:], True
-
-
-def _changes(before, after):
-    return {p: {"before": before.get(p), "after": after.get(p)}
-            for p in sorted(set(before) | set(after)) if before.get(p) != after.get(p)}
-
-
-def _worker_env(workspace, python):
-    names = {"SYSTEMROOT", "WINDIR", "COMSPEC", "PATH", "PATHEXT", "TEMP", "TMP", "LANG", "LC_ALL", "NUMBER_OF_PROCESSORS"}
-    env = {k: v for k, v in os.environ.items() if k.upper() in names}
-    env.update({"PYTHONUTF8": "1", "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
-                "PYTHONPATH": str(workspace), "PIP_DISABLE_PIP_VERSION_CHECK": "1"})
-    env["PATH"] = str(Path(python).parent) + os.pathsep + env.get("PATH", "")
-    return env
-
-
-def _time_left(deadline):
-    if deadline is None:
-        return float("inf")
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("Trial wall-time limit reached")
-    return remaining
-
-
-def _process(command, cwd, env, stdout, stderr, timeout):
-    started = time.monotonic()
-    kwargs = {"start_new_session": True} if os.name != "nt" else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    timed_out = False
-    cleanup = None
-    with stdout.open("wb") as out, stderr.open("wb") as err:
-        process = subprocess.Popen(command, cwd=str(cwd), env=env, stdout=out, stderr=err, stdin=subprocess.DEVNULL, **kwargs)
-        try:
-            process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            if os.name == "nt":
-                taskkill = str(Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe")
-                killed = subprocess.run([taskkill, "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                cleanup = {"method": "taskkill_tree", "returncode": killed.returncode,
-                           "output": killed.stdout.decode("utf-8", errors="replace")}
-            else:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                cleanup = {"method": "kill_process_group"}
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-                cleanup["fallback"] = "kill_parent"
-    return {"returncode": process.returncode, "timed_out": timed_out,
-            "elapsed_seconds": round(time.monotonic() - started, 4), "cleanup": cleanup}
-
 
 class ToolRunner:
     def __init__(self, run_dir):
@@ -204,19 +81,7 @@ class ToolRunner:
         self._event_id = None
 
     def _protected(self, name):
-        parts = name.split("/")
-        leaf = parts[-1].lower()
-        if any(p.lower() in {"test", "tests", "testing"} for p in parts[:-1]):
-            return True
-        if leaf.startswith("test_") or leaf.endswith("_test.py") or leaf == "test.py":
-            return True
-        if leaf in CONFIG_NAMES or leaf.startswith("requirements") and leaf.endswith(".txt"):
-            return True
-        for value in self.config.get("protected_paths", []):
-            value = value.replace("\\", "/")
-            if name.casefold() == value.casefold() or value.endswith("/") and name.casefold().startswith(value.casefold()):
-                return True
-        return False
+        return is_protected(name, self.config.get("protected_paths", []))
 
     def _git(self, args, cwd=None, data=None, *, deadline=None):
         env = _worker_env(self.workspace, self.config["python"])
@@ -353,29 +218,8 @@ class ToolRunner:
     def _apply_patch(self, state, patch, *, deadline=None):
         if not isinstance(patch, str) or not patch or len(patch.encode("utf-8")) > 2_000_000:
             raise ValueError("Expected a nonempty unified patch of at most 2MB")
-        paths = set()
-        for line in patch.splitlines():
-            if line.startswith(("old mode ", "new mode ", "new file mode ", "deleted file mode ")):
-                if line.split()[-1] not in {"100644", "100755"}:
-                    raise ValueError("Only regular-file patches are supported")
-            if line.startswith("diff --git "):
-                tokens = line.split()
-                if len(tokens) != 4:
-                    raise ValueError("Quoted or whitespace patch paths are unsupported")
-                paths.update(tokens[2:])
-            elif line.startswith(("--- ", "+++ ")):
-                token = line[4:].split("\t", 1)[0]
-                if token != "/dev/null":
-                    paths.add(token)
-            elif line.startswith(("rename from ", "rename to ", "copy from ", "copy to ")):
-                raise ValueError("Rename/copy patches are unsupported; use deletion and addition")
-        if not paths:
-            raise ValueError("Patch contains no file headers")
         targets = {}
-        for name in paths:
-            if not name.startswith(("a/", "b/")):
-                raise ValueError("Patch paths must use a/ and b/ prefixes")
-            rel = name[2:]
+        for rel in parse_patch_paths(patch):
             target = _safe_path(self.workspace, rel)
             if self._protected(rel):
                 raise ValueError("Original tests and test configuration are read-only")

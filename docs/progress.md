@@ -111,3 +111,24 @@
 - 新增 3 条守门测试：toolset 内工具必须存在于 `TOOL_SPECS`、未知 toolset 报错、summary 记录 toolset。
 - `--toolset repo-v1` 目前在 `run_demo` 会明确报错（adapter 尚未接）；`toy-v1` 行为不变。
 
+## 2026-11-22 ｜ v2 落地第 1–2 步：contracts + runtime 辅助
+
+- 新增 `contracts/`（中立层，不 import 项目内模块）：
+  - `protocols.py`：`Environment` / `Policy` / `ToolSpec` 协议；
+  - `protected.py`：受保护路径的唯一规则（`protected_source` 与 `is_protected`）；
+  - `patch.py`：Git 补丁路径解析（`strict` 模式供评测端使用）。
+- 新增 `runtime/fsguard.py`（路径安全、manifest、diff、显示截断）与 `runtime/process.py`（子进程、超时、进程树终止）。
+- `runtime/backends/repo.py` 617 → 464 行；改用 `contracts` 与 `runtime` 辅助，**不再 import `experiments`**。
+- `prepare.py`、`evaluate.py` 改用 `contracts.protected` / `contracts.patch`；`evaluate.py` 不再依赖 `repo.py` 的私有函数（`_write_json` 除外）。
+- 验证：`mvp` 40 OK、`experiments` 53 OK；`runtime` 23 个中 2 个仍是本机 git 2.37 的既有失败（合併前即存在）。
+
+## 2026-11-22 ｜ v2 落地第 3 步：垂直切片（合成 repo）
+
+- 新增 `runtime/local.py`：`LocalEnvironment`（路径安全、读写、列档、manifest、子进程、`export_patch`）。
+- 新增 `runtime/session.py`：phase、动作预算、墙钟、`executes_code` 审计、`finish` 原子汇出。
+- 新增 `tools/handlers.py`：7 个 handler（list/read/search/patch/replace/tests/finish），只经 `env` 操作；`dispatch` 回 v2 信封（`ok`/`kind`/`fatal`）。
+- `tools/specs.py` 加 `phase`、`executes_code`、`handler`；report 的阶段名不再依赖 `PHASE_BY_TOOL`（后续切换）。
+- `contracts/text_edit.py`：从 `runtime/` 移入，`tools/` 不再 import `runtime`。
+- `agent_core/agent.py`：支援 v2 observation（`ok`/`kind`/`fatal`/`result.accepted`），toy 旧格式仍相容。
+- 新增 `runtime/tests/test_vertical_slice.py`（5 个测试）：合成 repo 的 read→patch→test→finish、预算拒绝、受保护档拒绝、失败补丁原子性、Agent 全链。
+- 验证：`mvp` 40 OK、`runtime` 28（2 个仍是本机 git 2.37）、`experiments` 53 OK、demo 7/7。

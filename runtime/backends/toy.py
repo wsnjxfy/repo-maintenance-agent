@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 
 from runtime.exec.suite import run_suite
-from runtime.text_edit import replace_unique_text
+from contracts.text_edit import replace_unique_text
 from tools.toolsets import tool_names
 
 class Tools:
