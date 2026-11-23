@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 import json
 from pathlib import Path
+import sys
 import time
 from typing import Protocol
 from uuid import uuid4
@@ -38,7 +39,26 @@ class Task(Protocol):
         ...
 
 
+def _configure_stdout():
+    """Avoid UnicodeEncodeError on non-UTF-8 consoles (e.g. Windows CI)."""
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
+def _emit(message):
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+        safe = message.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        print(safe, flush=True)
+
+
 def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=None):
+    _configure_stdout()
     started = time.perf_counter()
     root = Path(output_root) if output_root is not None else Path(
         getattr(task, "runs_root", Path("runs")))
@@ -112,11 +132,11 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
     write_report(summary, history, run_dir / "report.html",
                  labels=tool_labels(task.toolset))
 
-    print(f"\n状态：{status}；可见测试记录保存在 trajectory.jsonl", flush=True)
-    print(f"独立需求测试：{evaluation['requirements']['passed']}/"
-          f"{evaluation['requirements']['total']}", flush=True)
-    print(f"独立回归测试：{evaluation['regressions']['passed']}/"
-          f"{evaluation['regressions']['total']}", flush=True)
-    print(f"新增回归：{len(evaluation['new_regressions'])}", flush=True)
-    print(f"报告：{run_dir / 'report.html'}", flush=True)
+    _emit(f"\n状态：{status}；可见测试记录保存在 trajectory.jsonl")
+    _emit(f"独立需求测试：{evaluation['requirements']['passed']}/"
+          f"{evaluation['requirements']['total']}")
+    _emit(f"独立回归测试：{evaluation['regressions']['passed']}/"
+          f"{evaluation['regressions']['total']}")
+    _emit(f"新增回归：{len(evaluation['new_regressions'])}")
+    _emit(f"报告：{run_dir / 'report.html'}")
     return summary, history, run_dir

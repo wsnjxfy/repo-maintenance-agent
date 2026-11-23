@@ -213,10 +213,12 @@
 - 驗證：`agent_core` 23 OK、`tools` 7 OK、`runtime` 39（2 個本機 git 2.37）、`mvp` 12 OK、`experiments` 53 OK；`python mvp/demo.py` 10 步、7/7、3/3。
 - 待辦：用真實 `deepseek-flash` 重跑 toy；若成功，再決定 repo 是否也做 recount 或保留 `apply_patch`。
 
-## 2026-11-24 ｜ CI 修正：Windows CRLF checkout
+## 2026-11-24 ｜ CI 修正：run.py 中文輸出（cp1252）
 
-- GitHub Actions run 24（`5906d81`）：Ubuntu 綠，Windows 的 `mvp/tests` 失敗（後續步驟被跳過）。
-- 原因：Windows checkout 的 `core.autocrlf` 把 fixture 轉成 CRLF；`--policy scripted` 與 LLM 的 `replace_text` 用 LF 片段比對，找不到 `    return 5\n`。
-- `tools/handlers.py`：`replace_text` 在純 CRLF 檔案把 `old`/`new` 正規化為 CRLF，再進行唯一片段替換；寫回保留原行尾。
-- `tools/tests/test_handlers.py` 新增 `test_crlf_checkout_accepts_lf_fragments`。
-- 本機驗證：`tools` 8 OK、`mvp` 12 OK、`agent_core` 23 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK。
+- GitHub Actions run 24（`5906d81`）與 run 25（`cdafbbc`）：Ubuntu 綠，Windows 的 `mvp/tests` 在 `run.py:115` 的 `print` 失敗：
+  `UnicodeEncodeError: 'charmap' codec can't encode ...`。
+- 原因：`Agent` 已有 `_emit` 容錯，但新加的通用 `run.py` 直接 `print`；`test_demo` 直接呼叫 `demo.run()`，不經過 `main()` 的 stdout reconfig。
+- `run.py`：新增 `_configure_stdout()`（UTF-8、`errors="replace"`）與 `_emit()`，套用到五個進度輸出。
+- 防禦性保留 `tools/handlers.py` 的 CRLF 正規化與 `test_crlf_checkout_accepts_lf_fragments`（Windows checkout 可能 CRLF；不是本次失敗主因）。
+- 以 `PYTHONIOENCODING=cp1252` 模擬：`mvp` 12 OK、`run_demo` exit 0；正常：`agent_core` 23、`tools` 8、`runtime` 39（2 個本機 git 2.37）、`experiments` 53、`mvp` 12。
+
