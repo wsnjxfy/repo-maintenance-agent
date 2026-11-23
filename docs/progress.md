@@ -188,3 +188,27 @@
 - 新增 `mvp/__init__.py`；測試改 import `mvp.demo` / `mvp.toy_task`。
 - 驗證：`mvp` 8 OK、`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK；`mvp/demo.py` 與 `mvp/run_demo.py` 都 exit 0（7/7、3/3）。
 - 待辦：M2 第 2 步把 `LLMPolicy` 接進 `run.py`（`--policy llm`），第 3 步吸收預算，之後 Sphinx Task。
+
+## 2026-11-23 ｜ M2 第 2 步：LLM policy 接回 `run.py`
+
+- `run.py` 增加 `policy_factory(run_dir, task)`：讓 LLM policy 能把 `llm_calls.jsonl` 寫進 run 目錄；`policy` 與 factory 二選一。
+- `mvp/demo.py` 增加 `--policy {scripted,llm}`、`--model`、`--no-llm-log`；LLM 分支用 `policy_from_env(task.problem, model, toolset=task.toolset, transport=..., log_path=...)`。
+- 新增 `mvp/tests/test_demo_llm.py`（4 個測試，`FakeTransport` 不連網）：
+  - 9 次假回應 → `completed`、7/7、3/3、`prompt=v4`、tokens 90/45、`llm_calls.jsonl` 9 筆；
+  - scripted 仍是 `prompt=v1`、無 token/log；
+  - `--no-llm-log` 不產生檔案；
+  - prompt 只列 `toy-v2` 的 5 個工具。
+- README 補回 `--policy llm` 用法與 CLI 參數。
+- 驗證：`mvp` 12 OK、`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK；`python mvp/demo.py` exit 0（7/7、3/3）。
+- 待辦：真實模型手動跑一次、第 3 步預算吸收、Sphinx Task。
+
+## 2026-11-23 ｜ toy-v2 改用 `replace_text`（prompt v5）
+
+- 背景：`deepseek-flash` 在新 `apply_patch` 上連續產生 hunk 行數錯誤的 diff（`corrupt patch`），而 C1 用舊 `replace_text` 成功；為把「工具格式」與「模型能力」分開，toy 改回片段替換。
+- `tools/toolsets.py`：`toy-v2` 的 `apply_patch` → `replace_text`；`repo-v1` 不動。
+- `agent_core/llm.py`：`PROMPT_VERSION = v5`；`system_prompt()` 依 toolset 選 `replace_text` 或 `apply_patch` 範例，避免 repo 看到不存在的工具。
+- `mvp/scripted_policy.py`：改為兩次 `replace_text`（config.py、client.py），刪除 `PATCH`。
+- `tools/handlers.py`：`dispatch` 補捕捉 `SyntaxError`；新增 `tools/tests/test_handlers.py`（唯一片段、缺片段、語法錯誤不寫入）。
+- 測試更新：`toy-v2` 5 個工具、scripted 步驟 9→10、fake LLM 10 calls / 100+50 tokens、prompt 只含 `replace_text` 不含 `apply_patch`。
+- 驗證：`agent_core` 23 OK、`tools` 7 OK、`runtime` 39（2 個本機 git 2.37）、`mvp` 12 OK、`experiments` 53 OK；`python mvp/demo.py` 10 步、7/7、3/3。
+- 待辦：用真實 `deepseek-flash` 重跑 toy；若成功，再決定 repo 是否也做 recount 或保留 `apply_patch`。

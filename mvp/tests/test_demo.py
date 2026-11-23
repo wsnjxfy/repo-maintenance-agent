@@ -44,7 +44,7 @@ class ToyV2DemoTests(unittest.TestCase):
         self.assertIn('+    return {"url": url, "timeout": timeout}', text)
 
     def test_trajectory_records_v2_observations(self):
-        self.assertEqual(len(self.history), 9)
+        self.assertEqual(len(self.history), 10)
         self.assertTrue(all(event["observation"]["ok"] for event in self.history))
 
     def test_hidden_checks_do_not_enter_history(self):

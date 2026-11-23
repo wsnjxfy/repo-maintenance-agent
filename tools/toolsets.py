@@ -13,7 +13,7 @@ TOOLSETS = {
         "tools": (
             "list_files",
             "read_lines",
-            "apply_patch",
+            "replace_text",
             "run_visible_tests",
             "finish",
         ),

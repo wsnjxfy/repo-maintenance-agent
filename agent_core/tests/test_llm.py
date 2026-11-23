@@ -159,9 +159,10 @@ class TestLLMPolicy(unittest.TestCase):
 
     def test_top_level_args_are_normalized(self):
         policy = LLMPolicy(task="t", model="m", transport=lambda payload: self.reply(
-            '{"tool": "apply_patch", "patch": "diff"}'))
+            '{"tool": "replace_text", "path": "config.py", "old": "a", "new": "b"}'))
         action = policy.next_action([])
-        self.assertEqual((action.tool, action.args), ("apply_patch", {"patch": "diff"}))
+        self.assertEqual((action.tool, action.args),
+                         ("replace_text", {"path": "config.py", "old": "a", "new": "b"}))
 
     def test_arguments_json_string_is_parsed(self):
         content = '{"tool": "read_lines", "arguments": "{\\"path\\": \\"config.py\\"}"}'
@@ -175,10 +176,15 @@ class TestLLMPolicy(unittest.TestCase):
 
     def test_prompt_states_args_nesting_with_example(self):
         prompt = LLMPolicy(task="t", model="m").system_prompt()
-        self.assertIn('"tool": "apply_patch", "args"', prompt)
+        self.assertIn('"tool": "replace_text", "args"', prompt)
         self.assertIn("所有参数都放在 args 对象里", prompt)
-        self.assertIn('"tool": "apply_patch", "patch"', prompt)   # 反面示例也在
+        self.assertIn('"tool": "replace_text", "path"', prompt)   # 反面示例也在
         self.assertEqual(LLMPolicy(task="t", model="m").prompt_version, PROMPT_VERSION)
+
+    def test_repo_prompt_uses_apply_patch(self):
+        prompt = LLMPolicy(task="t", model="m", toolset="repo-v1").system_prompt()
+        self.assertIn('"tool": "apply_patch", "args"', prompt)
+        self.assertNotIn('"tool": "replace_text"', prompt)
 
     def test_env_loader_does_not_override_existing_values(self):
         saved = {name: os.environ.get(name)

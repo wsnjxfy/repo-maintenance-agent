@@ -29,7 +29,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_toy_v2_surface(self):
         names = tool_names("toy-v2")
-        self.assertEqual(names, ["list_files", "read_lines", "apply_patch",
+        self.assertEqual(names, ["list_files", "read_lines", "replace_text",
                                  "run_visible_tests", "finish"])
         self.assertEqual(set(tool_labels("toy-v2")), set(names))
         table = tool_table("toy-v2")

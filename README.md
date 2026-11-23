@@ -2,7 +2,7 @@
 
 一个从教学原型逐步发展的仓库维护 Agent 项目。目前完成 **MVP 0：看懂执行闭环** 与 **C1：接入真实模型并连续 3 次跑通教学任务（prompt v2）**；toy 演示已切到 v2 共用栈（`LocalEnvironment + Session + tools/handlers`），下一步是 C2/Sphinx 切片。
 
-这版默认用预设脚本提出操作，真实执行 `list_files`、`read_lines`、多文件 `apply_patch` 和 pytest 可见测试；运行后生成可逐步浏览的中文离线报告。模型适配器仍在 `agent_core/llm.py`，但**尚未接回 demo**；当前 demo 不产生模型调用。C1 的连续三次成功只说明旧 scaffold 可用；**单次或少量成功不构成模型能力或方法优劣的结论**。
+这版默认用预设脚本提出操作；加 `--policy llm` 可接入真实模型。toy 工具集是 `list_files`、`read_lines`、`replace_text`、`run_visible_tests`、`finish`（片段替换为主）；repo/Sphinx 仍用 `apply_patch`。运行后生成可逐步浏览的中文离线报告。C1 的连续三次成功只说明旧 scaffold 可用；**单次或少量成功不构成模型能力或方法优劣的结论**。
 
 Sphinx 7462 [工具说明](experiments/sphinx_7462/README.md) · [团队更新记录](CHANGELOG.md)
 
@@ -14,7 +14,13 @@ Sphinx 7462 [工具说明](experiments/sphinx_7462/README.md) · [团队更新�
 python mvp/run_demo.py --open
 ```
 
-模型接入仍在 `agent_core/llm.py`，但当前 demo 只跑脚本策略；`--use-llm` / `--model` 已暂时移除，等 Sphinx 切片把 runner 接回来。
+接入真实模型（任何 OpenAI 兼容端点）。先在 `.env` 填好 `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（模板见 `.env.example`）：
+
+```sh
+python mvp/demo.py --policy llm --model deepseek-flash --open
+```
+
+不指定 `--model` 时使用 `.env` 的 `LLM_MODEL`。模型调用会写 `llm_calls.jsonl`（`--no-llm-log` 可关闭）。
 
 Windows PowerShell 可使用包装脚本，它会寻找已有 Python（包括本机 Codex 提供的运行时）：
 
@@ -28,11 +34,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
+| `--policy` | `scripted` | `scripted`（教学脚本）或 `llm`（真实模型） |
+| `--model NAME` | `.env` 的 `LLM_MODEL` | 仅 `--policy llm` 使用 |
 | `--max-steps N` | 16 | 决策步数上限；耗尽 → `budget_exhausted`，退出码 1 |
 | `--output-dir PATH` | `mvp/runs` | run 目录的父层（仍会建唯一子目录） |
 | `--open` | 关 | 跑完用浏览器打开 `report.html` |
+| `--no-llm-log` | 关 | 不写 `llm_calls.jsonl`（仅模型模式） |
 
-当前 demo 只运行脚本策略，不调用模型；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
+默认脚本策略不调用模型；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
 
 ## 演示内容
 
@@ -40,7 +49,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 
 ```text
 list_files → read_lines（config/client/cli/可见测试）→ 起点测试
-  → apply_patch（同时修改 config.py 和 client.py）→ 重测 → finish → 独立需求与回归评测
+  → replace_text（config.py）→ replace_text（client.py）→ 重测 → finish
+  → 独立需求与回归评测
 ```
 
 在当前固定教学任务上，可见测试从 **1/8**（只有默认值用例通过）变为 **8/8**；最终独立需求测试 **7/7**、回归 **3/3**。这是专门设计来解释失败恢复的样例，不是对陌生仓库的泛化成绩。
@@ -86,7 +96,8 @@ python mvp/run_demo.py --max-steps 3
 - `task.txt`：本轮任务说明。
 - `trajectory.jsonl`：每一步的意图、工具参数、实际反馈与耗时。
 - `final.patch`：初始代码到最终代码的统一 diff（由 `Session.finish` 导出）。
-- `summary.json`：停止状态、步数/动作数、toolset、env、visibility、评测和耗时。
+- `summary.json`：停止状态、步数/动作数、模型、token/费用、toolset、env、visibility、评测和耗时。
+- `llm_calls.jsonl`：仅 `--policy llm`；每次 API 调用的完整请求与原始响应。
 - `controller/`：`state.json`、`actions.jsonl`、`submission/` 等运行记录。
 - `report.html`：可直接打开的中文轨迹浏览器。
 

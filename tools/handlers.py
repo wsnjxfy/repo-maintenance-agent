@@ -198,7 +198,7 @@ def dispatch(name, env, ctx, args):
         return {"ok": False, "tool": name, "error": "Unknown workspace tool", "kind": "tool"}
     try:
         result = HANDLERS[spec["handler"]](env, ctx, **args)
-    except (ValueError, TypeError, OSError) as exc:
+    except (ValueError, TypeError, OSError, SyntaxError) as exc:
         return {"ok": False, "tool": name, "error": f"{type(exc).__name__}: {exc}", "kind": "tool"}
     observation = {"ok": True, "tool": name, "result": result}
     if isinstance(result, dict) and "changed_paths" in result:

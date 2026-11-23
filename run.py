@@ -38,7 +38,7 @@ class Task(Protocol):
         ...
 
 
-def run(task, policy, *, output_root=None, max_steps=None):
+def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=None):
     started = time.perf_counter()
     root = Path(output_root) if output_root is not None else Path(
         getattr(task, "runs_root", Path("runs")))
@@ -49,6 +49,10 @@ def run(task, policy, *, output_root=None, max_steps=None):
 
     run_id = prefix + "-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
     run_dir = root.resolve() / run_id
+    if policy_factory is not None:
+        policy = policy_factory(run_dir, task)
+    if policy is None:
+        raise ValueError("run() needs a policy or a policy_factory")
     run_dir.mkdir(parents=True, exist_ok=False)
     workspace = task.prepare(run_dir)
     (run_dir / "task.txt").write_text(task.problem + "\n", encoding="utf-8")

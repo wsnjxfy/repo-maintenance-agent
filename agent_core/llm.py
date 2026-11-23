@@ -34,7 +34,7 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 # Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
 # attributable. v3: tool table is now derived from the selected toolset.
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 
 # Presentation metadata: the model only emits tool + args (docs/interfaces.md §2.2).
 PHASE_BY_TOOL = {
@@ -60,15 +60,15 @@ SYSTEM_TEMPLATE = """你是一个仓库维护 agent，任务是在给定工作�
 输出要求：只输出一个 JSON 对象，不要解释、不要 Markdown 代码块：
 {{"tool": "<工具名>", "args": {{...}}}}
 
-正确示例（apply_patch）：
-{{"tool": "apply_patch", "args": {{"patch": "diff --git a/x.py b/x.py ..."}}}}
+正确示例（{edit_tool}）：
+{edit_example}
 
 工作规则：
 1. tests/ 下的文件只读，不要尝试修改它们。
 2. 修改代码后重新调用 run_visible_tests；finish 会冻结并导出补丁，独立评测在结束后进行。
 3. 不要重复读同一个文件；先用 list_files 缩小范围。
-4. 所有参数都放在 args 对象里。例如 {{"tool": "apply_patch", "args": {{"patch": "..."}}}}；
-   不要写成 {{"tool": "apply_patch", "patch": "..."}}，也不要把工具签名当成顶层字段。
+4. 所有参数都放在 args 对象里。例如 {edit_example}；
+   不要写成 {edit_negative}，也不要把工具签名当成顶层字段。
 5. 一次只输出一个 JSON 对象。即使需要读多个文件，也要分成多个步骤，不要在同一则回复里给多个动作。
 6. 推理保持简短；JSON 之外不要输出任何内容。
 """
@@ -120,7 +120,22 @@ class LLMPolicy:
 
     # --- prompt -----------------------------------------------------------------
     def system_prompt(self):
-        return SYSTEM_TEMPLATE.format(tools=tool_table(self.toolset))
+        names = tool_names(self.toolset)
+        if "replace_text" in names:
+            edit_tool = "replace_text"
+            example = ('{"tool": "replace_text", "args": '
+                       '{"path": "config.py", "old": "...", "new": "..."}}')
+            negative = ('{"tool": "replace_text", "path": "config.py", '
+                        '"old": "...", "new": "..."}')
+        else:
+            edit_tool = "apply_patch"
+            example = ('{"tool": "apply_patch", "args": '
+                       '{"patch": "diff --git a/x.py b/x.py ..."}}')
+            negative = '{"tool": "apply_patch", "patch": "diff ..."}'
+        return SYSTEM_TEMPLATE.format(tools=tool_table(self.toolset),
+                                      edit_tool=edit_tool,
+                                      edit_example=example,
+                                      edit_negative=negative)
 
     def _clip(self, value):
         text = json.dumps(value, ensure_ascii=False)

@@ -1,4 +1,4 @@
-"""Scripted policy for the v2 toy demo (same fixture, real tools).
+"""Scripted policy for the v2 toy demo (fragment edits, real tools).
 
 It knows this fixture and the fix in advance. The loop, Session and
 LocalEnvironment are real; only the decisions are scripted.
@@ -18,30 +18,6 @@ FINAL_CONFIG = '''    from math import isfinite
     return selected
 '''
 
-PATCH = '''diff --git a/config.py b/config.py
---- a/config.py
-+++ b/config.py
-@@ -4,2 +4,10 @@
- def resolve_timeout(config_value=None, cli_value=None):
--    return 5
-+    from math import isfinite
-+
-+    selected = cli_value if cli_value is not None else config_value
-+    if selected is None:
-+        selected = 5
-+    if (isinstance(selected, bool) or not isinstance(selected, (int, float))
-+            or selected <= 0 or (isinstance(selected, float) and not isfinite(selected))):
-+        raise ValueError("timeout must be a positive finite number")
-+    return selected
-diff --git a/client.py b/client.py
---- a/client.py
-+++ b/client.py
-@@ -4,2 +4,2 @@
- def build_request(url, timeout=5):
--    return {"url": url, "timeout": 5}
-+    return {"url": url, "timeout": timeout}
-'''
-
 
 class ToyV2Policy:
     def __init__(self):
@@ -53,7 +29,12 @@ class ToyV2Policy:
             ("read_lines", {"path": "tests/test_visible.py", "start": 1, "end": 43},
              "阅读行区间", "检查可见测试约定。"),
             ("run_visible_tests", {"paths": ["tests/test_visible.py"]}, "验证", "记录修改前的真实失败。"),
-            ("apply_patch", {"patch": PATCH}, "应用补丁", "一次修改 config.py 与 client.py。"),
+            ("replace_text", {"path": "config.py", "old": "    return 5\n", "new": FINAL_CONFIG},
+             "修改代码", "用唯一片段替换修正配置合并与校验。"),
+            ("replace_text", {"path": "client.py",
+                              "old": '    return {"url": url, "timeout": 5}\n',
+                              "new": '    return {"url": url, "timeout": timeout}\n'},
+             "修改代码", "把最终超时传到请求。"),
             ("run_visible_tests", {"paths": ["tests/test_visible.py"]}, "验证", "对最新文件重跑可见测试。"),
             ("finish", {"reason": "最新可见测试通过，提交补丁供独立评测。"}, "提交结果", "结束本轮。"),
         ]

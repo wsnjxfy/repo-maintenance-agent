@@ -141,7 +141,7 @@ TOOL_SPECS = {
 | --- | --- | --- | --- |
 | `list_files` | `path, limit` | 列出目录下的文件 | ✓ |
 | `read_lines` | `path, start, end` | 读取行区间 | ✓ |
-| `apply_patch` | `patch` | unified diff；tests 只读，失败还原 | |
+| `replace_text` | `path, old, new` | 唯一片段替换；tests 只读，语法错误不写入 | |
 | `run_visible_tests` | `paths, timeout_seconds` | 运行指定 pytest 目标 | |
 | `finish` | `reason` | 冻结并导出补丁，判定交给评测 | |
 
@@ -267,7 +267,7 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 
 ```json
 {"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
- "versions": {"action": "v1", "tools": "v1", "prompt": "v4", "trajectory": "v1"},
+ "versions": {"action": "v1", "tools": "v1", "prompt": "v5", "trajectory": "v1"},
  "toolset": "toy-v2", "tools_enabled": ["list_files", "..."],
  "status": "...", "stop_reason": "...", "steps": 17,
  "model_calls": 0, "tokens": {"prompt": 0, "completion": 0}, "cost_usd": 0.0,
@@ -337,6 +337,7 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-03 | v1 | `prompt` 升到 v2：规则 4 明确「参数放 args」并加正反例；`summary.versions.prompt` 改为读取 `PROMPT_VERSION` | 兼容（仅版本值变化） |
 | 2026-11-17 | v1 | 新增 toolset 层：`tools/toolsets.py` 决定每次 run 可用的工具与 backend；`prompt` 升 v3（工具表由 toolset 生成）；`summary` 增加 `toolset` / `tools_enabled` | 兼容（新增字段） |
 | 2026-11-22 | v1 | `prompt` 升 v4：toy 改用 `toy-v2` 工具表（`list_files`/`read_lines`/`apply_patch`/`run_visible_tests`/`finish`），提示词范例与规则同步；toolset 移除 `backend` 字段 | 兼容（版本值与 toolset 名称变化） |
+| 2026-11-23 | v1 | `prompt` 升 v5：toy-v2 改用 `replace_text`（`apply_patch` 只留 repo/Sphinx）；提示词依 toolset 给对应编辑范例；`apply_patch`/`replace_text` 之外的工具面不变 | 兼容（版本值与 toy 工具集变化） |
 
 ## 10. 常见事故（本文件要防的东西）
 
