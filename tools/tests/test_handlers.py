@@ -55,3 +55,12 @@ class ReplaceTextHandlerTests(unittest.TestCase):
         self.assertFalse(observation["ok"])
         self.assertIn("SyntaxError", observation["error"])
         self.assertEqual((self.workspace / "config.py").read_bytes(), before)
+
+    def test_crlf_checkout_accepts_lf_fragments(self):
+        path = self.workspace / "crlf.py"
+        path.write_bytes(b"def f():\r\n    return 5\r\n")
+        observation = dispatch("replace_text", self.env, self.ctx,
+                               {"path": "crlf.py", "old": "    return 5\n",
+                                "new": "    return 6\n"})
+        self.assertTrue(observation["ok"], observation)
+        self.assertEqual(path.read_bytes(), b"def f():\r\n    return 6\r\n")

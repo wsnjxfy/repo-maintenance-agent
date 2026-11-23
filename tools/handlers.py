@@ -114,6 +114,10 @@ def replace_text(env, ctx, path, old, new):
     if not isinstance(old, str) or not isinstance(new, str):
         raise ValueError("Replacement fragments must be strings")
     before = env.read_text(path)
+    if "\r\n" in before and "\n" not in before.replace("\r\n", ""):
+        # Windows checkouts may use CRLF; accept LF fragments from the model.
+        old = old.replace("\r\n", "\n").replace("\n", "\r\n")
+        new = new.replace("\r\n", "\n").replace("\n", "\r\n")
     after = replace_unique_text(before, old, new)
     if path.lower().endswith(".py"):
         ast.parse(after, filename=path)

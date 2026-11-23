@@ -193,8 +193,8 @@
 
 - `run.py` 增加 `policy_factory(run_dir, task)`：讓 LLM policy 能把 `llm_calls.jsonl` 寫進 run 目錄；`policy` 與 factory 二選一。
 - `mvp/demo.py` 增加 `--policy {scripted,llm}`、`--model`、`--no-llm-log`；LLM 分支用 `policy_from_env(task.problem, model, toolset=task.toolset, transport=..., log_path=...)`。
-- 新增 `mvp/tests/test_demo_llm.py`（4 個測試，`FakeTransport` 不連網）：
-  - 9 次假回應 → `completed`、7/7、3/3、`prompt=v4`、tokens 90/45、`llm_calls.jsonl` 9 筆；
+- 新增 `mvp/tests/test_demo_llm.py`（4 個測試，`FakeTransport` 不連網；數字已按後續 prompt v5 更新）：
+  - 10 次假回應 → `completed`、7/7、3/3、`prompt=v5`、tokens 100/50、`llm_calls.jsonl` 10 筆；
   - scripted 仍是 `prompt=v1`、無 token/log；
   - `--no-llm-log` 不產生檔案；
   - prompt 只列 `toy-v2` 的 5 個工具。
@@ -212,3 +212,11 @@
 - 測試更新：`toy-v2` 5 個工具、scripted 步驟 9→10、fake LLM 10 calls / 100+50 tokens、prompt 只含 `replace_text` 不含 `apply_patch`。
 - 驗證：`agent_core` 23 OK、`tools` 7 OK、`runtime` 39（2 個本機 git 2.37）、`mvp` 12 OK、`experiments` 53 OK；`python mvp/demo.py` 10 步、7/7、3/3。
 - 待辦：用真實 `deepseek-flash` 重跑 toy；若成功，再決定 repo 是否也做 recount 或保留 `apply_patch`。
+
+## 2026-11-24 ｜ CI 修正：Windows CRLF checkout
+
+- GitHub Actions run 24（`5906d81`）：Ubuntu 綠，Windows 的 `mvp/tests` 失敗（後續步驟被跳過）。
+- 原因：Windows checkout 的 `core.autocrlf` 把 fixture 轉成 CRLF；`--policy scripted` 與 LLM 的 `replace_text` 用 LF 片段比對，找不到 `    return 5\n`。
+- `tools/handlers.py`：`replace_text` 在純 CRLF 檔案把 `old`/`new` 正規化為 CRLF，再進行唯一片段替換；寫回保留原行尾。
+- `tools/tests/test_handlers.py` 新增 `test_crlf_checkout_accepts_lf_fragments`。
+- 本機驗證：`tools` 8 OK、`mvp` 12 OK、`agent_core` 23 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK。
