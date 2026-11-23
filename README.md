@@ -4,7 +4,7 @@
 
 这版默认用预设脚本提出操作；加 `--policy llm` 可接入真实模型。toy 工具集是 `list_files`、`read_lines`、`replace_text`、`run_visible_tests`、`finish`（片段替换为主）；repo/Sphinx 仍用 `apply_patch`。运行后生成可逐步浏览的中文离线报告。C1 的连续三次成功只说明旧 scaffold 可用；**单次或少量成功不构成模型能力或方法优劣的结论**。
 
-Sphinx 7462 [工具说明](experiments/sphinx_7462/README.md) · [团队更新记录](CHANGELOG.md)
+Sphinx 7462 [工具说明](experiments/sphinx_7462/README.md) · [团队更新记录](CHANGELOG.md) · [开发笔记](notes/README.md)
 
 ## 立即运行
 

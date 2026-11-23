@@ -1,6 +1,10 @@
 param([switch]$OpenReport, [int]$MaxSteps = 16)
 $ErrorActionPreference = 'Stop'
 
+# Keep Python stdio UTF-8 so Chinese progress lines do not hit cp1252 errors.
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+
 # Prefer an existing Python. The bundled fallback makes this machine usable
 # even when its system python command is an unconfigured version-manager shim.
 $candidates = @()
