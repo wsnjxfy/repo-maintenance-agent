@@ -59,10 +59,11 @@ python mvp/run_demo.py --max-steps 3
 
 | 文件 | 关注的问题 |
 | --- | --- |
-| `mvp/demo.py` | 复制 fixture、建 `LocalEnvironment`/`Session`、跑 `Agent`、最后独立验收 |
-| `mvp/run_demo.py` | 兼容 CLI 薄壳（`python mvp/run_demo.py`） |
-| `mvp/toy_config.py` | toy 的 visibility、toolset 与 protocol |
+| `run.py` | 通用 orchestrator：Task → Environment → Session → Agent → Evaluator |
+| `mvp/demo.py` | 薄 CLI：`ToyTask` + 脚本策略，呼叫 `run.py` |
+| `mvp/toy_task.py` | toy 的 fixture、visibility、protocol、prepare/evaluate |
 | `mvp/scripted_policy.py` | 教学脚本决策 |
+| `mvp/run_demo.py` | 兼容 CLI 薄壳（`python mvp/run_demo.py`） |
 | `agent_core/agent.py` | 模型/策略怎样与工具交替执行，何时停止 |
 | `agent_core/llm.py` | OpenAI 兼容适配器：prompt、解析、用量与调用日志 |
 | `tools/specs.py` | 工具目录：名称、参数、说明（prompt 与报告标签的唯一来源） |
@@ -101,7 +102,7 @@ python -B -m unittest discover -s experiments/sphinx_7462/tests -v
 
 ## 已有边界与下一步
 
-当前仅支持这个受信任的教学仓库。模型可读/可写哪些文件由 `mvp/toy_config.py` 的 `Visibility` 决定（tests 只读）；测试在独立 Python 进程中执行。这些边界**不构成操作系统级沙箱**，不要将本版直接用于运行任意外部仓库。
+当前仅支持这个受信任的教学仓库。模型可读/可写哪些文件由 `mvp/toy_task.py` 的 `Visibility` 决定（tests 只读）；测试在独立 Python 进程中执行。这些边界**不构成操作系统级沙箱**，不要将本版直接用于运行任意外部仓库。
 
 评测源码不进入任务工作区，也不通过工具或反馈交给策略；它随仓库公开，目的是展示独立验证的组织方式，不能作为正式研究中的保密测试集。教学策略事先知道样例修法，也不能用于评估检索质量。
 

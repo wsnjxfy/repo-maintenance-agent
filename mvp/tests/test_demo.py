@@ -9,9 +9,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from demo import run
+from mvp.demo import run
 from evaluation.demo_eval import evaluate
-from toy_config import VISIBILITY
+from mvp.toy_task import VISIBILITY
 
 
 class ToyV2DemoTests(unittest.TestCase):

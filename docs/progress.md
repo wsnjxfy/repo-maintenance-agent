@@ -179,3 +179,12 @@
 - `agent_core/agent.py` 加 `_emit()`：`print` 失敗時以 `errors="replace"` 重印，不再中斷回路。
 - `mvp/demo.py` 的 `run()` 開頭把 stdout 重設為 UTF-8（`errors="replace"`），涵蓋 demo 自己的中文輸出。
 - 以 `PYTHONIOENCODING=cp1252` 模擬：`mvp` 8 OK、`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK、`run_demo` exit 0。
+
+## 2026-11-23 ｜ M2 第 1 步：抽出通用 `run.py`
+
+- 新增根目錄 `run.py`：`Task` 協議 + `run(task, policy, output_root, max_steps)`；負責建 run dir、`task.prepare()`、`LocalEnvironment`、`Session`、`Agent`、`task.evaluate()`、summary/report。
+- 新增 `mvp/toy_task.py`：`ToyTask`（fixture、`Visibility`、`PROTOCOL`、`prepare()` 的 git baseline commit、`evaluate()`）；吸收原 `mvp/toy_config.py` 後刪除該檔。
+- `mvp/demo.py` 縮成薄 CLI（`ToyTask` + `ToyV2Policy` → `run.py`）；`mvp/run_demo.py` 只委派 `mvp.demo.main`。
+- 新增 `mvp/__init__.py`；測試改 import `mvp.demo` / `mvp.toy_task`。
+- 驗證：`mvp` 8 OK、`agent_core` 22 OK、`tools` 4 OK、`runtime` 39（2 個本機 git 2.37）、`experiments` 53 OK；`mvp/demo.py` 與 `mvp/run_demo.py` 都 exit 0（7/7、3/3）。
+- 待辦：M2 第 2 步把 `LLMPolicy` 接進 `run.py`（`--policy llm`），第 3 步吸收預算，之後 Sphinx Task。
