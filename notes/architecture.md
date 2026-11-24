@@ -35,7 +35,10 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
   与 `Session.finalize()`；
 - `experiments/sphinx_7462/task.py`（`SphinxTask`）已建立；真实
   `prepare`（Python 3.9.20）通过，空补丁 0/2、reference 2/2、回归 49/49；
-- 旧 `runtime/backends/repo.py`（`ToolRunner`）与
-  `experiments/sphinx_7462/baseline.py` 仍保留，待 agent 真实跑通后删除；
-- 下一步：用 `run.py + SphinxTask` 跑一次 agent（先脚本/参考补丁策略），
-  与 `baseline.py` 对照，再把 `evaluate.py` / `grading.py` 顶层化。
+- `experiments/sphinx_7462/runner.py` 已用 `run.py + SphinxTask` 跑通
+  reference 2/2 与空补丁 0/2；
+- `runtime/backends/` 与 `baseline.py` 已删除；历史版本见
+  `git tag archive/sphinx-toolrunner-baseline`；
+- `agent_core/llm.py` 已加入成本/ token 上限，由 `run.py` 的 summary 记录；
+- 下一步：用 `--policy llm` 跑真实 Sphinx，再进入开发任务与批次实验；
+  `evaluate.py` / `grading.py` 仍可后续顶层化。

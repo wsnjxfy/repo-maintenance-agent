@@ -3,22 +3,17 @@
 ## 五组测试
 
 ```powershell
-python -B -m unittest discover -s agent_core/tests   # 23
+python -B -m unittest discover -s agent_core/tests   # 28
 python -B -m unittest discover -s tools/tests        # 8
-python -B -m unittest discover -s runtime/tests      # 41（本机 2 个 git 2.37 失败）
+python -B -m unittest discover -s runtime/tests      # 18
 python -B -m unittest discover -s mvp/tests          # 12
-python -B -m unittest discover -s experiments/sphinx_7462/tests  # 56
+python -B -m unittest discover -s experiments/sphinx_7462/tests  # 37
 ```
 
-## 已知本机失败（不是回归）
+## 已知本机失败
 
-```text
-runtime/tests/test_repo_backend.py::test_invalid_multi_file_patch_never_partially_applies
-runtime/tests/test_repo_backend.py::test_patch_addition_survives_finish_and_applies_to_clean_base
-```
-
-原因：本机 git 2.37 的 patch 行为；CI 用较新 git 会过。不要在本地“修”
-到 CI 红。
+无。旧 `test_repo_backend.py` 的 2 个 git 2.37 失败随 `ToolRunner` 一起移除；
+若重新引入等价 patch 测试，仍应按 git 版本判定。
 
 ## 常见误判
 

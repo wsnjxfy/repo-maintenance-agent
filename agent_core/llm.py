@@ -18,13 +18,14 @@ from __future__ import annotations
 
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 import time
 import urllib.error
 import urllib.request
 
 from .action_parsing import extract_json, normalize_args, strip_fence
-from .agent import Action
+from .agent import Action, PolicyBudgetExceeded
 from tools.toolsets import DEFAULT_TOOLSET, tool_names, tool_table
 
 
@@ -96,7 +97,8 @@ class LLMPolicy:
                  transport=None, temperature=0.0, max_tokens=4096, timeout=120,
                  max_history=6, observation_limit=1200,
                  input_price=0.0, output_price=0.0, log_path=None,
-                 json_mode="auto", toolset=DEFAULT_TOOLSET):
+                 json_mode="auto", toolset=DEFAULT_TOOLSET,
+                 budget_usd=None, max_total_tokens=None):
         self.task = task
         self.model = model
         self.api_key = api_key
@@ -117,6 +119,21 @@ class LLMPolicy:
         self.calls = 0
         self.last_usage = None
         self.last_extra_actions = 0
+        self.max_total_tokens = max_total_tokens
+        self.total_tokens = 0
+        self.spent_usd = Decimal("0")
+        self.budget_usd = None
+        if budget_usd is not None:
+            budget = Decimal(str(budget_usd))
+            if not budget.is_finite() or budget <= 0:
+                raise ValueError("budget_usd must be a positive finite amount")
+            if max(input_price, output_price) <= 0:
+                raise ValueError("budget_usd requires positive token prices")
+            self.budget_usd = budget
+        if max_total_tokens is not None and (not isinstance(max_total_tokens, int)
+                                             or isinstance(max_total_tokens, bool)
+                                             or max_total_tokens < 1):
+            raise ValueError("max_total_tokens must be a positive integer")
 
     # --- prompt -----------------------------------------------------------------
     def system_prompt(self):
@@ -262,6 +279,21 @@ class LLMPolicy:
         with self.log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
+    def _reserve(self, messages):
+        if self.budget_usd is None and self.max_total_tokens is None:
+            return
+        prompt_tokens = max(1, len(json.dumps(messages, ensure_ascii=False)) // 4)
+        reserve_tokens = prompt_tokens + self.max_tokens
+        if (self.max_total_tokens is not None
+                and self.total_tokens + reserve_tokens > self.max_total_tokens):
+            raise PolicyBudgetExceeded("Model token budget would be exceeded")
+        if self.budget_usd is not None:
+            worst_price = max(self.input_price, self.output_price)
+            reserve_cost = (Decimal(reserve_tokens) * Decimal(str(worst_price))
+                            / Decimal(1_000_000))
+            if self.spent_usd + reserve_cost > self.budget_usd:
+                raise PolicyBudgetExceeded("Model cost budget would be exceeded")
+
     def next_action(self, history):
         step = len(history) + 1
         messages = self._messages(history)
@@ -273,6 +305,7 @@ class LLMPolicy:
                 "role": "user",
                 "content": f"上一次输出无法使用：{last_error}\n请重新只输出一个合法 JSON 对象。",
             }]
+            self._reserve(batch)
             started = time.perf_counter()
             try:
                 reply = self._post(batch)
@@ -287,6 +320,13 @@ class LLMPolicy:
             usage = reply.get("usage") or {}
             prompt_tokens += int(usage.get("prompt_tokens", 0) or 0)
             completion_tokens += int(usage.get("completion_tokens", 0) or 0)
+            self.total_tokens += int(usage.get("prompt_tokens", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
+            self.spent_usd += Decimal(str(self._cost(int(usage.get("prompt_tokens", 0) or 0),
+                                                     int(usage.get("completion_tokens", 0) or 0))))
+            if self.max_total_tokens is not None and self.total_tokens > self.max_total_tokens:
+                raise PolicyBudgetExceeded("Model token budget exceeded")
+            if self.budget_usd is not None and self.spent_usd > self.budget_usd:
+                raise PolicyBudgetExceeded("Model cost budget exceeded")
             try:
                 action = self._parse(reply)
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:

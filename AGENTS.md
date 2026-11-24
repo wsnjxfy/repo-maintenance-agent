@@ -12,10 +12,9 @@ This repository is a research scaffold for a repository-maintenance agent
 - **Five test suites**:
   `agent_core/tests`, `tools/tests`, `runtime/tests`, `mvp/tests`,
   `experiments/sphinx_7462/tests`. Run the relevant ones before committing.
-- **Known local-only failures**: `runtime/tests` has two failures on git 2.37
-  (`test_invalid_multi_file_patch_never_partially_applies`,
-  `test_patch_addition_survives_finish_and_applies_to_clean_base`). CI uses a
-  newer git and passes them.
+- **Known local-only failures**: none after removing the legacy
+  `ToolRunner` tests. If equivalent patch tests are reintroduced, check git
+  version instead of weakening assertions.
 - **`--max-steps 3` is a demo budget**, not a test command. Tests use
   `python -B -m unittest discover -s ...`.
 - **Layering**: `contracts/` imports no project module; `tools/` must not
@@ -24,9 +23,9 @@ This repository is a research scaffold for a repository-maintenance agent
 - **Toolset vs visibility**: a toolset only chooses tool names; readable /
   editable / protected paths belong to the instance (`Visibility`), enforced
   by `LocalEnvironment`, never by handlers or toolsets.
-- **Legacy**: `runtime/backends/repo.py` (`ToolRunner`) and
-  `experiments/sphinx_7462/baseline.py` are old paths kept until the Sphinx
-  slice; do not build new features on them.
+- **Legacy removed**: `runtime/backends/repo.py` (`ToolRunner`) and
+  `experiments/sphinx_7462/baseline.py` are gone. Historical code is at
+  `git tag archive/sphinx-toolrunner-baseline`; do not reintroduce it.
 
 ## Where to look
 

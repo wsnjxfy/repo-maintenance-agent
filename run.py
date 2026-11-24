@@ -128,6 +128,9 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
                     "completion": sum(item.get("completion_tokens", 0) for item in usages)}
                    if usages else None),
         "cost_usd": round(sum(item.get("cost_usd", 0.0) for item in usages), 6),
+        "budget_usd": (float(policy.budget_usd)
+                       if getattr(policy, "budget_usd", None) is not None else None),
+        "spent_usd": float(getattr(policy, "spent_usd", 0.0)),
         "llm_log": (Path(policy.log_path).name if getattr(policy, "log_path", None) else None),
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "resolved": resolved,

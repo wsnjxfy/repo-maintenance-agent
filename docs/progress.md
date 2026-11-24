@@ -242,3 +242,13 @@
 - 測試：`agent_core` 23、`tools` 8、`runtime` 41（2 個本機 git 2.37）、`mvp` 12、`experiments` 56（新增 3 個 SphinxTask 測試）。
 - 待辦（第 3 階段）：用 `run.py + SphinxTask` 跑 agent（先參考補丁/腳本策略），與 `baseline.py` 對照，之後刪 `ToolRunner` / `baseline.py` 並把 `evaluation/` 頂層化。
 
+## 2026-11-24 ｜ M3 第 3 階段：Sphinx agent 路徑與 legacy 移除
+
+- `evaluate.py` 的 `_write_json` 移至 `runtime/fsguard.write_json`，不再依賴 `runtime.backends`。
+- `agent_core/llm.py` 加入 `budget_usd` / `max_total_tokens` 與 `PolicyBudgetExceeded`；`Agent` 回報 `budget_exhausted`；新增 4 個預算測試。
+- `experiments/sphinx_7462/runner.py`：`--policy reference|none|llm`，用 `run.py + SphinxTask` 執行。
+- 實測：reference **2/2 + 49/49**、空補丁 **0/2 + 49/49**，exit code 0/1 符合預期。
+- 刪除 `experiments/sphinx_7462/baseline.py`、`runtime/backends/`、`runtime/tests/test_repo_backend.py` 及 3 個依賴 baseline 的測試；歷史版本見 `git tag archive/sphinx-toolrunner-baseline`。
+- 測試數：`agent_core` 28、`tools` 8、`runtime` 18、`mvp` 12、`experiments` 37；合計 **103**，本機全綠（舊 2 個 git 2.37 失敗隨 legacy 測試移除）。
+- 待辦：`--policy llm` 的真實 Sphinx run、開發/測試任務批次、`evaluation/` 頂層化。
+

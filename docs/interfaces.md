@@ -156,7 +156,7 @@ TOOL_SPECS = {
 | `run_visible_tests` | `paths, timeout_seconds` | 运行最多 30 个 pytest 目标 |
 | `finish` | `reason` | 导出补丁，判定交给评测 |
 
-`runtime/backends/repo.py` 已实现这 6 个动作；把它接给 agent 的 adapter 仍是待办（R3）。
+`tools/handlers.py` 是这些动作的唯一实现；`LocalEnvironment + Session` 负责执行、可见性与冻结。旧 `runtime/backends/repo.py` 已删除。
 
 ### 3.5 TOOLSETS 注册表
 

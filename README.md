@@ -81,12 +81,12 @@ python mvp/run_demo.py --max-steps 3
 | `tools/handlers.py` | 工具语义：参数校验、受保护路径、结果整理；操作委派给 env |
 | `runtime/local.py` | `LocalEnvironment`：路径安全、visibility、读写、子进程、补丁导出 |
 | `runtime/session.py` | 预算、墙钟、完整性审计、`finish` 冻结 |
-| `runtime/backends/repo.py` | 旧 `ToolRunner`（Sphinx 切片前保留） |
 | `runtime/exec/` | 新进程运行 unittest，返回结构化测试结果 |
 | `agent_core/report.py` / `report_template.html` | 将实际轨迹呈现为离线报告 |
 | `mvp/fixtures/timeout_demo/` | 保留初始缺陷的三文件教学仓库及公开测试 |
 | `mvp/evaluation/hidden_timeout_tests.py` | 只供独立评测器使用的示范验收检查 |
-| `experiments/sphinx_7462/` | 单题实验台：工作区准备、独立评测与判定 |
+| `experiments/sphinx_7462/task.py` | `SphinxTask`：真实实例的 prepare/evaluate 适配 |
+| `experiments/sphinx_7462/runner.py` | 用 `run.py + SphinxTask` 跑 reference / none / llm |
 
 建议先读 `agent_core/agent.py`，再对应报告看每一次 `Action → observation`，最后看 `tools/handlers.py` 与 `runtime/local.py`。源码注释中的 `Policy.next_action(history)` 是接入模型的接口位置。
 
@@ -113,13 +113,13 @@ python -B -m unittest discover -s experiments/sphinx_7462/tests -v
 
 ## 已有边界与下一步
 
-当前仅支持这个受信任的教学仓库。模型可读/可写哪些文件由 `mvp/toy_task.py` 的 `Visibility` 决定（tests 只读）；测试在独立 Python 进程中执行。这些边界**不构成操作系统级沙箱**，不要将本版直接用于运行任意外部仓库。
+当前支持固定的 toy 教学仓库与 Sphinx 7462 单题。模型可读/可写哪些文件由 Task 的 `Visibility` 决定（tests 只读）；测试在独立 Python 进程中执行。这些边界**不构成操作系统级沙箱**，不要将本版直接用于运行任意外部仓库。
 
 评测源码不进入任务工作区，也不通过工具或反馈交给策略；它随仓库公开，目的是展示独立验证的组织方式，不能作为正式研究中的保密测试集。教学策略事先知道样例修法，也不能用于评估检索质量。
 
 后续按小步叠加：
 
-1. 用真实小模型实现同一个决策接口，保留当前工具与轨迹格式。
+1. 用 `run.py + SphinxTask + LLMPolicy` 在真实 Sphinx 上跑模型；预算由 `llm.py` 的成本/token 上限控制。
 2. 在少量开发任务上比较普通 Agent 与人工提供相关修改前代码，判断模型/上下文瓶颈。
 3. 根据结果只选择一个核心机制改进，先考虑上下文选择；固定模型和预算做对照与消融。
 4. 建立独立开发/测试任务、隔离执行及多次实验，再讨论成功率与回归收益。

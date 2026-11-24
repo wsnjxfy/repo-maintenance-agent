@@ -7,6 +7,10 @@ import time
 from typing import Protocol
 
 
+class PolicyBudgetExceeded(RuntimeError):
+    """Raised by a policy when its model/token budget would be exceeded."""
+
+
 def _emit(message):
     """Print progress without crashing on non-UTF-8 consoles (e.g. cp1252 CI)."""
     try:
@@ -67,6 +71,9 @@ class Agent:
             for step in range(1, self.max_steps + 1):
                 try:
                     action = policy.next_action(history)
+                except PolicyBudgetExceeded as exc:
+                    status, reason = "budget_exhausted", str(exc)
+                    break
                 except Exception as exc:
                     status, reason = "policy_failed", f"决策器错误：{type(exc).__name__}: {exc}"
                     break

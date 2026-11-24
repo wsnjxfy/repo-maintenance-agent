@@ -91,3 +91,15 @@ def display(raw: bytes, limit: int) -> tuple[str, bool]:
         return text, False
     half = limit // 2
     return text[:half] + "\n[output truncated; full bytes retained in log]\n" + text[-half:], True
+
+
+def write_json(path, value):
+    """Atomically write UTF-8 JSON (no project imports)."""
+    import json
+    import os
+    import uuid
+
+    path = Path(path)
+    temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(str(temp), str(path))

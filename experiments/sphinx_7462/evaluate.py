@@ -22,7 +22,7 @@ from experiments.sphinx_7462.prepare import (
 )
 from contracts.patch import parse_patch_paths
 from contracts.protected import is_protected
-from runtime.backends.repo import _write_json
+from runtime.fsguard import write_json as _write_json
 from runtime.fsguard import (IGNORED_DIRS, changes as _changes, digest as _digest,
                              files as _files, safe_path as _safe_path)
 from runtime.process import process as _process, worker_env as _worker_env
