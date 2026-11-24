@@ -5,6 +5,10 @@ venv/
 .env
 .env.*
 !.env.example
+
+# 本地 benchmark 輸入與執行產物（不進 git）
+data/
+runs/
 mvp/runs/
 .DS_Store
 Thumbs.db

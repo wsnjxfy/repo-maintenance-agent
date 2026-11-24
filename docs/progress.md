@@ -222,3 +222,23 @@
 - 防禦性保留 `tools/handlers.py` 的 CRLF 正規化與 `test_crlf_checkout_accepts_lf_fragments`（Windows checkout 可能 CRLF；不是本次失敗主因）。
 - 以 `PYTHONIOENCODING=cp1252` 模擬：`mvp` 12 OK、`run_demo` exit 0；正常：`agent_core` 23、`tools` 8、`runtime` 39（2 個本機 git 2.37）、`experiments` 53、`mvp` 12。
 
+## 2026-11-24 ｜ Sphinx 校準輸入就位
+
+- 四檔從 `sphinx-7462-calibration-inputs/` 移至 `data/sphinx-doc__sphinx-7462/`；舊根目錄已移除。
+- `review-manifest.json` 改名為 `review.json`，與 `experiments/sphinx_7462/README.md` 一致；CLI 參數仍是 `--review-manifest`（語義名稱，不是檔名）。
+- `.gitignore` 增加 `data/` 與 `runs/`；`mvp/runs/` 保留給 toy 產物。
+- `experiments/sphinx_7462/README.md` 的輸入路徑改為 `data/sphinx-doc__sphinx-7462/...`，輸出改為 `runs/...`。
+- 驗證：tarball SHA 符合；`checked_members` 通過；`_validated_record` 得到 2 個 F2P + 49 個 P2P；test_patch SHA 符合 README；`reference.patch` 等於 record 的 `patch`；兩個補丁 `git apply --check` 都通過。
+- 待辦：用 Python 3.9.20 + pytest 8.3.3 跑真實 `prepare` / `evaluate`（0/2、2/2、49/49）。
+
+## 2026-11-24 ｜ M3 階段 0–2：SphinxTask 與 Task 介面
+
+- 真實 `prepare`（Python 3.9.20，`experiments/sphinx_7462/.venv39`）成功：1398 個原始檔、735 個受保護檔、`environment-probe=passed`。
+- 舊 `evaluate` 基線校準：空補丁 0/2 + 49/49（exit 1）、reference 2/2 + 49/49（exit 0）。
+- `run.py` Task v2：`python` / `git`、`evaluate(run_dir, workspace, patch)`、`resolved` 正規化；Agent 未 `finish` 時 `Session.finalize()` 匯出補丁。
+- `LocalEnvironment.run()` 把 `TEMP` / `TMP` 指到 `scratch/tmp`；`SphinxTask.evaluate()` 用絕對 `run_dir/tmp`，避免 pytest 因 DSH 暫存 ACL 退回 workspace。
+- `prepare.py` 新增 `prepare_workspace()`；`experiments/sphinx_7462/task.py` 的 `SphinxTask` 用它，加入 baseline commit、visibility 與正規化評測。
+- 新路徑驗證：`SphinxTask.prepare` 真實 workspace、空補丁 0/2 + 49/49、reference 2/2 + 49/49。
+- 測試：`agent_core` 23、`tools` 8、`runtime` 41（2 個本機 git 2.37）、`mvp` 12、`experiments` 56（新增 3 個 SphinxTask 測試）。
+- 待辦（第 3 階段）：用 `run.py + SphinxTask` 跑 agent（先參考補丁/腳本策略），與 `baseline.py` 對照，之後刪 `ToolRunner` / `baseline.py` 並把 `evaluation/` 頂層化。
+

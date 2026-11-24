@@ -98,6 +98,9 @@ class LocalEnvironment:
     # --- execution ---------------------------------------------------------
     def run(self, command, cwd=".", timeout=60, stdin=None, env_extra=None, logs=None):
         environment = process.worker_env(self.workspace, self.python)
+        temp_dir = self.scratch / "tmp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        environment.update({"TEMP": str(temp_dir), "TMP": str(temp_dir)})
         environment.update(env_extra or {})
         cwd_path = self.workspace if cwd in ("", ".") else self.resolve(cwd, allow_dot=True)
         if stdin is not None:

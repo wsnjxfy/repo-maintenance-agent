@@ -31,7 +31,11 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
 - toy 已切到 `run.py + ToyTask + LocalEnvironment + Session + handlers`；
 - `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v5，toy-v2 用
   `replace_text`；
+- `run.py` 的 Task 接口已支持 `python` / `git`、`evaluate(run_dir, workspace, patch)`
+  与 `Session.finalize()`；
+- `experiments/sphinx_7462/task.py`（`SphinxTask`）已建立；真实
+  `prepare`（Python 3.9.20）通过，空补丁 0/2、reference 2/2、回归 49/49；
 - 旧 `runtime/backends/repo.py`（`ToolRunner`）与
-  `experiments/sphinx_7462/baseline.py` 仍保留；
-- Sphinx 7462 的四个输入不在本机，尚未做 repo 切片；
-- 下一步：`SphinxTask` + `run.py`，与 `baseline.py` 对照后再删旧路径。
+  `experiments/sphinx_7462/baseline.py` 仍保留，待 agent 真实跑通后删除；
+- 下一步：用 `run.py + SphinxTask` 跑一次 agent（先脚本/参考补丁策略），
+  与 `baseline.py` 对照，再把 `evaluate.py` / `grading.py` 顶层化。

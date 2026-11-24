@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import shutil
+import sys
 import subprocess
 
 from contracts.visibility import Visibility
@@ -35,6 +36,8 @@ class ToyTask:
     protocol: dict = field(default_factory=lambda: dict(PROTOCOL))
     run_prefix: str = "toyv2"
     max_steps: int = 16
+    python: str = sys.executable
+    git: str = "git"
     runs_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[0] / "runs")
 
     def prepare(self, run_dir: Path) -> Path:
@@ -43,15 +46,17 @@ class ToyTask:
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         (workspace / ".gitignore").write_bytes(b"__pycache__/\n.pytest_cache/\n*.pyc\n")
         for command in (
-            ["git", "init", "-q"],
-            ["git", "config", "user.email", "toy@example.test"],
-            ["git", "config", "user.name", "toy-demo"],
-            ["git", "add", "-A"],
-            ["git", "commit", "-qm", "baseline"],
+            [self.git, "init", "-q"],
+            [self.git, "config", "user.email", "toy@example.test"],
+            [self.git, "config", "user.name", "toy-demo"],
+            [self.git, "add", "-A"],
+            [self.git, "commit", "-qm", "baseline"],
         ):
             subprocess.run(command, cwd=workspace, check=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return workspace
 
-    def evaluate(self, workspace: Path, patch: Path | None = None) -> dict:
-        return evaluate(workspace)
+    def evaluate(self, run_dir: Path, workspace: Path, patch: Path | None = None) -> dict:
+        result = evaluate(workspace)
+        result["resolved"] = result["passed"]
+        return result

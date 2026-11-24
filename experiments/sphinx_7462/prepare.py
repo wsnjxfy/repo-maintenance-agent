@@ -367,6 +367,39 @@ def _populate_run(source_archive, run_dir, python, git, task_input, expected_sha
     return summary
 
 
+def prepare_workspace(source_archive, workspace, baseline, python, git,
+                      expected_sha256=SOURCE_SHA256, skip_env_probe=False):
+    """Extract a workspace + baseline and prepare an empty Git history.
+
+    This is the part of ``prepare()`` that a Task needs; it deliberately does
+    not create a run directory, controller or task-input files.
+    """
+    workspace = Path(workspace)
+    baseline = Path(baseline)
+    extract_source(source_archive, baseline)
+    extract_source(source_archive, workspace)
+    initial = manifest(baseline)
+    if manifest(workspace) != initial:
+        raise ValueError("Extracted workspace differs from the baseline")
+    subprocess.run([str(git), "-C", str(workspace), "init", "-q"], check=True,
+                   capture_output=True, timeout=30)
+    subprocess.run([str(git), "-C", str(workspace), "config", "core.autocrlf", "false"],
+                   check=True, capture_output=True, timeout=30)
+    probe = {"status": "skipped", "reason": "explicit_fixture_test_option"}
+    if not skip_env_probe:
+        probe = probe_environment(python, workspace)
+    if manifest(workspace) != initial or manifest(baseline) != initial:
+        raise ValueError("Preparation/import probe changed original source files")
+    # LocalEnvironment.export_patch needs a HEAD commit; no remote is added.
+    subprocess.run([str(git), "-C", str(workspace), "-c", "user.email=task@example.test",
+                    "-c", "user.name=sphinx-task", "add", "-A"], check=True,
+                   capture_output=True, timeout=30)
+    subprocess.run([str(git), "-C", str(workspace), "-c", "user.email=task@example.test",
+                    "-c", "user.name=sphinx-task", "commit", "-qm", "baseline"],
+                   check=True, capture_output=True, timeout=30)
+    return initial, probe
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-archive", required=True)

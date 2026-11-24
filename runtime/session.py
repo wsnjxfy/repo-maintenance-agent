@@ -111,6 +111,16 @@ class Session:
         return observation
 
     # --- finish ------------------------------------------------------------
+    def finalize(self, reason="stopped without finish"):
+        """Export the current workspace even if the agent never called finish."""
+        if self.state["phase"] == "finished":
+            return self.state
+        result = self._finish(reason)
+        self.state["phase"] = "finished"
+        self.state["finished_at"] = result["completed_at"]
+        self._save()
+        return result
+
     def _finish(self, reason):
         current = self.env.manifest()
         changed = fsguard.changes(self.initial, current)

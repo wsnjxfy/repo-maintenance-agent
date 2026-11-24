@@ -5,9 +5,9 @@
 ```powershell
 python -B -m unittest discover -s agent_core/tests   # 23
 python -B -m unittest discover -s tools/tests        # 8
-python -B -m unittest discover -s runtime/tests      # 39（本机 2 个 git 2.37 失败）
+python -B -m unittest discover -s runtime/tests      # 41（本机 2 个 git 2.37 失败）
 python -B -m unittest discover -s mvp/tests          # 12
-python -B -m unittest discover -s experiments/sphinx_7462/tests  # 53
+python -B -m unittest discover -s experiments/sphinx_7462/tests  # 56
 ```
 
 ## 已知本机失败（不是回归）

@@ -31,11 +31,13 @@ class Task(Protocol):
     protocol: dict
     run_prefix: str
     max_steps: int
+    python: str
+    git: str
 
     def prepare(self, run_dir: Path) -> Path:
         ...
 
-    def evaluate(self, workspace: Path, patch: Path | None) -> dict:
+    def evaluate(self, run_dir: Path, workspace: Path, patch: Path | None) -> dict:
         ...
 
 
@@ -78,6 +80,8 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
     (run_dir / "task.txt").write_text(task.problem + "\n", encoding="utf-8")
 
     env = LocalEnvironment(workspace, visibility=task.visibility,
+                           python=getattr(task, "python", None),
+                           git=getattr(task, "git", "git"),
                            scratch=run_dir / "scratch")
     specs = {name: TOOL_SPECS[name] for name in tool_names(task.toolset)}
     session = Session(env, run_dir / "controller", task.protocol, specs, set(specs),
@@ -87,8 +91,11 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
         policy, run_dir / "trajectory.jsonl")
 
     submission = run_dir / "controller" / "submission" / "final.patch"
+    if not submission.exists():
+        session.finalize(reason)
     patch = submission if submission.exists() else None
-    evaluation = task.evaluate(workspace, patch)
+    evaluation = task.evaluate(run_dir, workspace, patch)
+    resolved = bool(evaluation.get("resolved", evaluation.get("passed", False)))
     if patch is not None:
         final_patch = run_dir / "final.patch"
         final_patch.write_bytes(patch.read_bytes())
@@ -123,6 +130,7 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
         "cost_usd": round(sum(item.get("cost_usd", 0.0) for item in usages), 6),
         "llm_log": (Path(policy.log_path).name if getattr(policy, "log_path", None) else None),
         "elapsed_seconds": round(time.perf_counter() - started, 3),
+        "resolved": resolved,
         "evaluation": evaluation,
         "final_patch": final_patch.name if final_patch else None,
         "run_dir": run_dir.name,
@@ -133,10 +141,14 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
                  labels=tool_labels(task.toolset))
 
     _emit(f"\n状态：{status}；可见测试记录保存在 trajectory.jsonl")
-    _emit(f"独立需求测试：{evaluation['requirements']['passed']}/"
-          f"{evaluation['requirements']['total']}")
-    _emit(f"独立回归测试：{evaluation['regressions']['passed']}/"
-          f"{evaluation['regressions']['total']}")
-    _emit(f"新增回归：{len(evaluation['new_regressions'])}")
+    _emit(f"resolved：{str(resolved).lower()}")
+    if isinstance(evaluation.get("requirements"), dict) and "passed" in evaluation["requirements"]:
+        _emit(f"独立需求测试：{evaluation['requirements']['passed']}/"
+              f"{evaluation['requirements']['total']}")
+    if isinstance(evaluation.get("regressions"), dict) and "passed" in evaluation["regressions"]:
+        _emit(f"独立回归测试：{evaluation['regressions']['passed']}/"
+              f"{evaluation['regressions']['total']}")
+    if isinstance(evaluation.get("new_regressions"), list):
+        _emit(f"新增回归：{len(evaluation['new_regressions'])}")
     _emit(f"报告：{run_dir / 'report.html'}")
     return summary, history, run_dir

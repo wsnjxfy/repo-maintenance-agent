@@ -19,7 +19,7 @@ python -B -m unittest discover -s experiments/sphinx_7462/tests -v
 
 ## 真题校准
 
-Windows 使用 Python 3.9.20 和[固定依赖](requirements-windows.txt)。将[源码归档](https://codeload.github.com/sphinx-doc/sphinx/tar.gz/b3e26a6c851133b82b50f4b68b53692076574d13)保存为 `mvp/runs/7462-inputs/sphinx-base.tar.gz`，同目录下的三个文件从 [Verified 实例](https://datasets-server.huggingface.co/rows?dataset=princeton-nlp%2FSWE-bench_Verified&config=default&split=test&offset=391&length=1)取得。
+Windows 使用 Python 3.9.20 和[固定依赖](requirements-windows.txt)。将[源码归档](https://codeload.github.com/sphinx-doc/sphinx/tar.gz/b3e26a6c851133b82b50f4b68b53692076574d13)保存为 `data/sphinx-doc__sphinx-7462/sphinx-base.tar.gz`，同目录下的三个文件从 [Verified 实例](https://datasets-server.huggingface.co/rows?dataset=princeton-nlp%2FSWE-bench_Verified&config=default&split=test&offset=391&length=1)取得。
 
 - `record.json` 保存响应中 `rows[0].row` 的完整记录，实例 ID 应为 `sphinx-doc__sphinx-7462`。
 - `review.json` 保留 `instance_id`、`repo`、`base_commit`，在 `evaluation` 中放入 `FAIL_TO_PASS` 和 `PASS_TO_PASS` 数组。将下方哈希填入 `reference_summary.test_patch_sha256_utf8`。
@@ -31,14 +31,14 @@ Windows 使用 Python 3.9.20 和[固定依赖](requirements-windows.txt)。将[�
 
 ```powershell
 python -B -m experiments.sphinx_7462.evaluate `
-  --source-archive mvp/runs/7462-inputs/sphinx-base.tar.gz `
-  --record-path mvp/runs/7462-inputs/record.json `
-  --review-manifest mvp/runs/7462-inputs/review.json `
+  --source-archive data/sphinx-doc__sphinx-7462/sphinx-base.tar.gz `
+  --record-path data/sphinx-doc__sphinx-7462/record.json `
+  --review-manifest data/sphinx-doc__sphinx-7462/review.json `
   --python (Get-Command python).Source --git (Get-Command git).Source `
-  --output-dir mvp/runs/7462-baseline
+  --output-dir runs/sphinx-7462-baseline
 ```
 
-基线预期需求 **0/2**、回归 **49/49**，退出码为 `1`。用新输出目录重跑并加上 `--candidate-patch mvp/runs/7462-inputs/reference.patch`，预期需求 **2/2**、回归 **49/49**。结果见输出目录的 `evaluation.json`。
+基线预期需求 **0/2**、回归 **49/49**，退出码为 `1`。用新输出目录重跑并加上 `--candidate-patch data/sphinx-doc__sphinx-7462/reference.patch`，预期需求 **2/2**、回归 **49/49**。结果见输出目录的 `evaluation.json`。
 
 ## 离线 Agent 基线
 
@@ -46,11 +46,11 @@ python -B -m experiments.sphinx_7462.evaluate `
 
 ```powershell
 python -B -m experiments.sphinx_7462.baseline `
-  --source-archive mvp/runs/7462-inputs/sphinx-base.tar.gz `
-  --record-path mvp/runs/7462-inputs/record.json `
-  --review-manifest mvp/runs/7462-inputs/review.json `
+  --source-archive data/sphinx-doc__sphinx-7462/sphinx-base.tar.gz `
+  --record-path data/sphinx-doc__sphinx-7462/record.json `
+  --review-manifest data/sphinx-doc__sphinx-7462/review.json `
   --python (Get-Command python).Source --git (Get-Command git).Source `
-  --run-dir mvp/runs/7462-mock-001
+  --run-dir runs/sphinx-7462-mock-001
 ```
 
 默认模拟响应只浏览工作区并结束，冻结的是空补丁。预期需求 **0/2**、回归 **49/49**。可用 `--mock-replies 文件.json` 指定响应序列。文件是 JSON 数组，每项可用 `{"tool":"list_files","args":{}}` 这样的动作对象，或用字符串模拟模型返回的原始文本。
@@ -77,4 +77,4 @@ python -B -m experiments.sphinx_7462.baseline `
 
 控制器复用 `agent_core/llm.py` 的 Chat Completions 请求层。每次调用前按[高峰期价格](https://api-docs.deepseek.com/quick_start/pricing/)预留费用。请求后按服务端用量记账，缺失用量时停止追加请求。模型调用日志保存响应中的模型名、token、缓存命中和耗时，汇总里的费用是按高峰单价计算的估算值。
 
-准备工作区和调用工具的参数可分别用 `python -m experiments.sphinx_7462.prepare --help` 和 `python -m runtime.backends.repo --help` 查看。运行数据放在 `mvp/runs/`。[更新记录](../../CHANGELOG.md)
+准备工作区和调用工具的参数可分别用 `python -m experiments.sphinx_7462.prepare --help` 和 `python -m runtime.backends.repo --help` 查看。运行数据放在 `runs/`。[更新记录](../../CHANGELOG.md)
