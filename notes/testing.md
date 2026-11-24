@@ -21,6 +21,7 @@ python -B -m unittest discover -s experiments/sphinx_7462/tests  # 37
 | --- | --- |
 | `python mvp/run_demo.py --max-steps 3` 失败 | 这是 demo 预算，预期 `budget_exhausted`；不是测试 |
 | `test_mvp`/`test_demo` 在 CI Windows 报 `???` | cp1252，见 `ci-encoding.md` |
+| CI Windows 测试路径 `RUNNER~1` 与 `runneradmin` 不相等 | `Path.resolve()` 会展开 8.3 短名；比较 `resolve()` 后的路径，不要比较原始字符串 |
 | tempfile 清理 `PermissionError` | DSH 沙箱的 ACL；在完整权限/正常临时目录跑 |
 
 ## 提交前

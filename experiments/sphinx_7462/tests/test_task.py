@@ -96,7 +96,8 @@ class SphinxTaskTests(unittest.TestCase):
         self.assertTrue(result["resolved"])
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["grading"]["f2p_passed"], 1)
-        self.assertEqual(called.call_args.kwargs["output_dir"], run_dir / "evaluation")
+        self.assertEqual(Path(called.call_args.kwargs["output_dir"]).resolve(),
+                         (run_dir / "evaluation").resolve())
 
     def test_protocol_limits(self):
         task = self.make_task()
