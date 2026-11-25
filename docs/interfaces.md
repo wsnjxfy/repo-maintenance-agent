@@ -267,15 +267,37 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 
 ```json
 {"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
- "versions": {"action": "v1", "tools": "v1", "prompt": "v5", "trajectory": "v1"},
+ "versions": {"action": "v1", "tools": "v1", "prompt": "v6", "trajectory": "v1"},
  "toolset": "toy-v2", "tools_enabled": ["list_files", "..."],
  "status": "...", "stop_reason": "...", "steps": 17,
  "model_calls": 0, "tokens": {"prompt": 0, "completion": 0}, "cost_usd": 0.0,
  "elapsed_seconds": 0.0, "test_calls": 3,
- "evaluation": {"resolved": false, "fail_to_pass": [], "pass_to_pass": [],
-                "new_regressions": []},
+ "evaluation": {"resolved": false, "status": "completed", "execution_valid": true,
+                "metrics": {"fail_to_pass": {"label": "F2P", "passed": 0, "total": 2, "failed": 2},
+                            "pass_to_pass": {"label": "P2P", "passed": 49, "total": 49, "failed": 0}},
+                "new_regressions": [], "errors": [], "cases": [], "details": {}},
  "failure_category": "requirement_failed"}
 ```
+
+### 6.1 评估结果（canonical envelope）
+
+所有 Task 的 `evaluate()` 回传同一个顶层形状（`contracts/evaluation.py`）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `resolved` | 任务是否通过；报告只看这个字段 |
+| `status` | `completed`／`evaluation_error`／`not_run` 等 |
+| `execution_valid` | 评测执行是否有效（不是环境故障） |
+| `metrics` | 命名指标；每个含 `label`／`passed`／`total`／`failed`／可选 `status` |
+| `new_regressions` | 新增回归清单 |
+| `errors` | 评测错误或验证错误 |
+| `cases` | 逐项测试结果（可选） |
+| `details` | 任务专属原始 payload；报告不解析这里的内容 |
+
+toy 把 `requirements` / `regressions` / `baseline_regressions` 映射成
+`fail_to_pass` / `pass_to_pass` / `baseline`；Sphinx 把 `grading.f2p_*` /
+`p2p_*` 映射成同样两个指标。未来新增 SWE-bench 样例如沿用同一 evaluator，
+不需要增加新的顶层字段；instance 差异放进 `details`。
 
 `failure_category` 取值：
 
@@ -338,6 +360,8 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-17 | v1 | 新增 toolset 层：`tools/toolsets.py` 决定每次 run 可用的工具与 backend；`prompt` 升 v3（工具表由 toolset 生成）；`summary` 增加 `toolset` / `tools_enabled` | 兼容（新增字段） |
 | 2026-11-22 | v1 | `prompt` 升 v4：toy 改用 `toy-v2` 工具表（`list_files`/`read_lines`/`apply_patch`/`run_visible_tests`/`finish`），提示词范例与规则同步；toolset 移除 `backend` 字段 | 兼容（版本值与 toolset 名称变化） |
 | 2026-11-23 | v1 | `prompt` 升 v5：toy-v2 改用 `replace_text`（`apply_patch` 只留 repo/Sphinx）；提示词依 toolset 给对应编辑范例；`apply_patch`/`replace_text` 之外的工具面不变 | 兼容（版本值与 toy 工具集变化） |
+| 2026-11-25 | v1 | `prompt` 升 v6：改为精简的纯 JSON 动作清单，不再使用「可用工具/调用」措辞与反面范例；重试反馈只要求一行 JSON；`run.py` 在 prepare/agent/finalize/evaluate 失败时也写 summary | 兼容（版本值与失败记录字段） |
+| 2026-11-25 | v1 | 新增 canonical evaluation envelope：`resolved`／`status`／`execution_valid`／`metrics`／`new_regressions`／`errors`／`cases`／`details`；toy 与 Sphinx 各自映射，报告不再依赖任务专属字段 | 评测消费者需改读 `metrics`；旧结果仍在 `details` |
 
 ## 10. 常见事故（本文件要防的东西）
 

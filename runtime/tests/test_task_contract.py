@@ -46,6 +46,16 @@ class FakeTask:
         return {"resolved": True, "status": "completed"}
 
 
+class FailingEvaluateTask(FakeTask):
+    def evaluate(self, run_dir, workspace, patch):
+        raise RuntimeError("evaluation exploded")
+
+
+class FailingPrepareTask(FakeTask):
+    def prepare(self, run_dir):
+        raise RuntimeError("prepare exploded")
+
+
 class TaskContractTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="hj10-task-")
@@ -63,8 +73,8 @@ class TaskContractTests(unittest.TestCase):
                         "-c", "user.name=test", "commit", "-qm", "baseline"], check=True)
         self.git = git
 
-    def task(self):
-        return FakeTask(
+    def task(self, cls=FakeTask):
+        return cls(
             workspace=self.workspace,
             visibility=Visibility(readable=("**",), editable=("**",)),
             protocol={"max_actions": 3, "wall_time_seconds": 30,
@@ -89,3 +99,24 @@ class TaskContractTests(unittest.TestCase):
         self.assertEqual(summary["final_patch"], "final.patch")
         self.assertTrue((run_dir / "final.patch").exists())
         self.assertIsNotNone(task.calls[0][2])
+
+    def test_evaluation_failure_still_writes_summary_and_patch(self):
+        task = self.task(FailingEvaluateTask)
+        summary, _, run_dir = run(task, FinishPolicy(), output_root=self.root / "runs")
+        self.assertTrue((run_dir / "summary.json").exists())
+        self.assertEqual(summary["status"], "completed")
+        self.assertEqual(summary["error_stage"], "evaluate")
+        self.assertEqual(summary["evaluation"]["status"], "evaluation_error")
+        self.assertFalse(summary["resolved"])
+        self.assertEqual(summary["final_patch"], "final.patch")
+        self.assertTrue((run_dir / "final.patch").exists())
+
+    def test_prepare_failure_still_writes_summary(self):
+        task = self.task(FailingPrepareTask)
+        summary, history, run_dir = run(task, FinishPolicy(), output_root=self.root / "runs")
+        self.assertTrue((run_dir / "summary.json").exists())
+        self.assertEqual(summary["status"], "run_failed")
+        self.assertEqual(summary["error_stage"], "prepare")
+        self.assertEqual(summary["evaluation"]["status"], "not_run")
+        self.assertFalse(summary["resolved"])
+        self.assertEqual(history, [])

@@ -89,13 +89,17 @@ class SphinxTaskTests(unittest.TestCase):
         run_dir.mkdir()
         workspace = task.prepare(run_dir)
         fake = {"resolved": True, "status": "completed",
-                "grading": {"f2p_passed": 1, "p2p_passed": 0}}
+                "grading": {"execution_valid": True,
+                             "f2p_passed": 1, "f2p_total": 2,
+                             "p2p_passed": 0, "p2p_total": 1}}
         with mock.patch("experiments.sphinx_7462.task.evaluate_module.evaluate",
                         return_value=fake) as called:
             result = task.evaluate(run_dir, workspace, None)
         self.assertTrue(result["resolved"])
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(result["grading"]["f2p_passed"], 1)
+        self.assertEqual(result["metrics"]["fail_to_pass"]["passed"], 1)
+        self.assertEqual(result["metrics"]["pass_to_pass"]["passed"], 0)
+        self.assertEqual(result["details"]["grading"]["f2p_passed"], 1)
         self.assertEqual(Path(called.call_args.kwargs["output_dir"]).resolve(),
                          (run_dir / "evaluation").resolve())
 

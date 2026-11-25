@@ -38,12 +38,12 @@
     </div>
     <section class="panel evaluation" aria-labelledby="evaluation-title">
       <h2 id="evaluation-title">独立评测 · 在维护流程结束后运行</h2>
-      <p class="evaluation-intro">验收检查与回归检查由评测器单独运行，结果不反馈给 Agent。此教学样例的验收代码随项目公开，用于解释评测边界；它不构成正式实验中的隐藏测试。</p>
+      <p class="evaluation-intro">验收、回归与执行有效性由评测器在 Agent 停止后独立运行，结果不反馈给 Agent。各任务把原始证据放在 evaluation.details；本报告只渲染统一字段。</p>
       <div class="eval-grid" id="evaluation"></div>
       <div id="new-regressions"></div>
       <div class="stop"><span class="label">停止原因</span><span id="stop-reason"></span></div>
       <details><summary>查看最终补丁</summary><pre class="diff" id="final-diff"></pre></details>
-      <p class="check-note">预设脚本可展示工具链和恢复流程。真实模型的成功率、token 成本以及方案收益，需要接入模型后，在独立任务上另行测量。</p>
+      <p class="check-note">评测结果由 Task 映射到统一格式；真实模型的成功率、token 成本与方案收益仍需在独立任务上测量。</p>
     </section>
     <footer class="footer"><p>本报告可直接用浏览器打开；无需联网、服务或第三方资源。键盘 <span class="key">←</span> <span class="key">→</span> 可切换步骤。</p><p id="run-dir"></p></footer>
   </main>
@@ -55,14 +55,14 @@
     const events = Array.isArray(payload.events) ? payload.events : [];
     const fallbackLabels = {map_repository:"建立仓库地图",read_file:"阅读代码",find_symbol:"检索符号",plan:"规划修改",replace_text:"应用增量补丁",run_tests:"运行可见测试",finish:"请求结束"};
     const labels = Object.assign({}, fallbackLabels, (payload && typeof payload.labels === "object" && payload.labels) || {});
-    const states = {completed:"流程已完成",budget_exhausted:"预算耗尽",policy_failed:"策略执行失败",incomplete:"流程未完成",passed:"通过",failed:"失败",error:"错误",environment_error:"环境故障",test_load_error:"测试加载失败 · 原因待查",execution_timeout:"测试超时 · 原因待查",skipped:"跳过",expected_failure:"预期失败",unexpected_success:"意外通过"};
+    const states = {completed:"流程已完成",budget_exhausted:"预算耗尽",policy_failed:"策略执行失败",incomplete:"流程未完成",run_failed:"运行失败",evaluation_error:"评测错误",not_run:"未评测",invalid_evaluation:"评测结果无效",passed:"通过",failed:"失败",error:"错误",unknown:"未知",environment_error:"环境故障",test_load_error:"测试加载失败 · 原因待查",execution_timeout:"测试超时 · 原因待查",skipped:"跳过",expected_failure:"预期失败",unexpected_success:"意外通过"};
     let selected = 0;
     const has = (value) => value !== undefined && value !== null;
     const str = (value, fallback="未记录") => !has(value) ? fallback : (typeof value === "string" ? value : JSON.stringify(value, null, 2));
     const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const list = (value) => Array.isArray(value) ? value : [];
     const statusLabel = (value) => states[value] || str(value);
-    const tone = (value) => value === "passed" || value === "completed" ? "ok" : value === "failed" || value === "error" || value === "policy_failed" ? "bad" : value === "environment_error" || value === "budget_exhausted" ? "warn" : "neutral";
+    const tone = (value) => value === "passed" || value === "completed" ? "ok" : value === "failed" || value === "error" || value === "policy_failed" || value === "run_failed" || value === "evaluation_error" ? "bad" : value === "environment_error" || value === "budget_exhausted" ? "warn" : "neutral";
     function node(tag, text, className) {const item=document.createElement(tag);if(has(text))item.textContent=str(text,"");if(className)item.className=className;return item;}
     function put(id, value) {document.getElementById(id).textContent=str(value);}
     function code(parent, value, className="") {const pre=node("pre",value,className);parent.append(pre);return pre;}
@@ -111,10 +111,18 @@
       const inputs=section(detail,"工具输入");code(inputs,action.args,"input");
       const feedback=section(detail,"工具反馈");observationView(feedback,tool,observation);raw(detail,"查看原始反馈记录",observation);
     }
-    put("task",summary.task);put("overall-status",statusLabel(summary.status));document.getElementById("overall-status").classList.add(tone(summary.status));put("step-count",has(summary.steps)?summary.steps:"未记录");put("elapsed",typeof summary.elapsed_seconds==="number"?summary.elapsed_seconds.toFixed(2)+" 秒":"未记录");put("stop-reason",summary.stop_reason);put("final-diff",summary.final_diff);put("run-dir",has(summary.run_dir)?"运行产物目录："+str(summary.run_dir):"运行产物目录：未记录");
+    put("task",summary.task);put("overall-status",statusLabel(summary.status));document.getElementById("overall-status").classList.add(tone(summary.status));put("step-count",has(summary.steps)?summary.steps:"未记录");put("elapsed",typeof summary.elapsed_seconds==="number"?summary.elapsed_seconds.toFixed(2)+" 秒":"未记录");put("stop-reason",summary.stop_reason);put("final-diff",has(summary.final_diff)?summary.final_diff:(has(summary.final_patch)?"补丁已导出："+str(summary.final_patch)+"（在运行目录中打开）":undefined));put("run-dir",has(summary.run_dir)?"运行产物目录："+str(summary.run_dir):"运行产物目录：未记录");
     const navigation=document.getElementById("steps");events.forEach((event,index)=>{const record=object(event),action=object(record.action),button=node("button",null,"step-button"),text=node("span"),mark=eventMark(record);button.type="button";button.append(node("span",String(index+1),"step-number"));text.append(node("span",labels[action.tool]||str(action.tool,"未记录操作"),"step-name"),node("span",action.tool,"step-tool"));button.append(text,node("span",mark[0],"step-mark "+mark[1]));button.addEventListener("click",()=>render(index));navigation.append(button);});if(!events.length)navigation.append(node("p","没有操作记录。","empty"));
-    const evaluation=object(summary.evaluation),evalRoot=document.getElementById("evaluation");[["需求验收",evaluation.requirements],["最终回归检查",evaluation.regressions],["修改前回归基准",evaluation.baseline_regressions]].forEach(([title,value])=>{const record=object(value),card=node("div",null,"eval-card");card.append(node("span",title,"label"),node("div",str(record.passed)+" / "+str(record.total)+" 通过","eval-result"),node("p","失败："+str(record.failed),"subtle"));evalRoot.append(card);});
-    const newRoot=document.getElementById("new-regressions");newRoot.append(node("p",typeof evaluation.passed==="boolean"?(evaluation.passed?"独立评测：通过":"独立评测：未通过"):"独立评测结论：未记录",evaluation.passed===true?"ok":evaluation.passed===false?"bad":"neutral"));if(Array.isArray(evaluation.new_regressions)){if(evaluation.new_regressions.length){newRoot.append(node("p","新增回归：","bad"));const ul=node("ul");evaluation.new_regressions.forEach(item=>ul.append(node("li",item)));newRoot.append(ul);}else newRoot.append(node("p","记录中的新增回归：0 项。","subtle"));}else newRoot.append(node("p","新增回归：未记录。","subtle"));
+    const evaluation=object(summary.evaluation),evalRoot=document.getElementById("evaluation");
+    let metricEntries=Object.entries(object(evaluation.metrics));
+    if(!metricEntries.length){const grading=object(evaluation.grading);if(has(grading.f2p_total)){metricEntries=[["fail_to_pass",{label:"F2P（需求验收）",passed:grading.f2p_passed,total:grading.f2p_total,failed:(grading.f2p_total||0)-(grading.f2p_passed||0)}],["pass_to_pass",{label:"P2P（回归检查）",passed:grading.p2p_passed,total:grading.p2p_total,failed:(grading.p2p_total||0)-(grading.p2p_passed||0)}]];}}
+    function metricCard(fallbackTitle,value) {const record=object(value),card=node("div",null,"eval-card"),label=has(record.label)?record.label:fallbackTitle;card.append(node("span",label,"label"),node("div",str(record.passed)+" / "+str(record.total)+" 通过","eval-result"),node("p","失败："+str(record.failed),"subtle"));if(has(record.status))card.append(node("p","状态："+statusLabel(record.status),"subtle"));return card;}
+    if(metricEntries.length){metricEntries.forEach(([key,value])=>evalRoot.append(metricCard(key,value)));}else{[["需求验收",evaluation.requirements],["最终回归检查",evaluation.regressions],["修改前回归基准",evaluation.baseline_regressions]].forEach(([title,value])=>evalRoot.append(metricCard(title,value)));}
+    const conclusion=has(evaluation.resolved)?evaluation.resolved:evaluation.passed;
+    const newRoot=document.getElementById("new-regressions");newRoot.append(node("p",typeof conclusion==="boolean"?(conclusion?"独立评测：通过":"独立评测：未通过"):"独立评测结论：未记录",conclusion===true?"ok":conclusion===false?"bad":"neutral"));if(has(evaluation.status))newRoot.append(node("p","评测状态："+statusLabel(evaluation.status),"subtle"));if(Array.isArray(evaluation.new_regressions)){if(evaluation.new_regressions.length){newRoot.append(node("p","新增回归：","bad"));const ul=node("ul");evaluation.new_regressions.forEach(item=>ul.append(node("li",item)));newRoot.append(ul);}else newRoot.append(node("p","记录中的新增回归：0 项。","subtle"));}else newRoot.append(node("p","新增回归：未记录。","subtle"));
+    if(Array.isArray(evaluation.errors)&&evaluation.errors.length){const box=node("div",null,"error-box");box.append(node("p","评测错误："));evaluation.errors.forEach(item=>box.append(node("p",str(item),"subtle")));newRoot.append(box);}
+    const evalCases=list(evaluation.cases);if(evalCases.length){const details=node("details");details.append(node("summary","查看逐项测试（"+evalCases.length+"）"));table(details,["测试","状态","详情"],evalCases.map(item=>{const record=object(item);return [str(record.name||record.nodeid),statusLabel(record.status),str(record.detail,"")];}));newRoot.append(details);}
+    if(has(evaluation.details))raw(newRoot,"查看评测原始记录",evaluation.details);
     document.getElementById("previous").addEventListener("click",()=>render(selected-1));document.getElementById("next").addEventListener("click",()=>render(selected+1));document.addEventListener("keydown",event=>{if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.target.closest("input,textarea,select,[contenteditable=true]"))return;if(event.key==="ArrowLeft"){event.preventDefault();render(selected-1);}if(event.key==="ArrowRight"){event.preventDefault();render(selected+1);}});render(0);
   </script>
 </body>

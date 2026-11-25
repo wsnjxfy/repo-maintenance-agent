@@ -110,7 +110,7 @@ class TestLLMPolicy(unittest.TestCase):
         self.assertEqual([record["attempt"] for record in records], [1, 2])
         self.assertIn("JSONDecodeError", records[0]["error"])
         self.assertIsNone(records[1]["error"])
-        self.assertTrue(records[0]["messages"][0]["content"].startswith("你是一个仓库维护 agent"))
+        self.assertTrue(records[0]["messages"][0]["content"].startswith("你是仓库维护 agent"))
         self.assertEqual(records[1]["raw_content"],
                          '{"tool": "finish", "args": {"reason": "ok"}}')
         self.assertEqual(records[1]["step"], 1)
@@ -203,13 +203,29 @@ class TestLLMPolicy(unittest.TestCase):
         prompt = LLMPolicy(task="t", model="m").system_prompt()
         self.assertIn('"tool": "replace_text", "args"', prompt)
         self.assertIn("所有参数都放在 args 对象里", prompt)
-        self.assertIn('"tool": "replace_text", "path"', prompt)   # 反面示例也在
+        self.assertIn("回复以 { 开始、以 } 结束", prompt)
+        self.assertNotIn("DSML", prompt)
         self.assertEqual(LLMPolicy(task="t", model="m").prompt_version, PROMPT_VERSION)
 
     def test_repo_prompt_uses_apply_patch(self):
         prompt = LLMPolicy(task="t", model="m", toolset="repo-v1").system_prompt()
         self.assertIn('"tool": "apply_patch", "args"', prompt)
         self.assertNotIn('"tool": "replace_text"', prompt)
+
+    def test_retry_feedback_asks_for_plain_json_without_parser_details(self):
+        sent = []
+        replies = iter([self.reply("｜｜DSML｜｜ not json"),
+                        self.reply('{"tool": "finish", "args": {"reason": "ok"}}')])
+
+        def transport(payload):
+            sent.append(payload)
+            return next(replies)
+
+        LLMPolicy(task="t", model="m", transport=transport).next_action([])
+        feedback = sent[1]["messages"][-1]["content"]
+        self.assertIn("只输出一个 JSON 对象", feedback)
+        self.assertNotIn("KeyError", feedback)
+        self.assertNotIn("JSONDecodeError", feedback)
 
     def test_env_loader_does_not_override_existing_values(self):
         saved = {name: os.environ.get(name)

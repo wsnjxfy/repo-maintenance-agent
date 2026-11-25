@@ -8,6 +8,7 @@ import shutil
 import sys
 import subprocess
 
+from contracts.evaluation import evaluation_result, metric
 from contracts.visibility import Visibility
 from mvp.evaluation.demo_eval import FIXTURE, TASK, evaluate
 
@@ -57,6 +58,30 @@ class ToyTask:
         return workspace
 
     def evaluate(self, run_dir: Path, workspace: Path, patch: Path | None = None) -> dict:
-        result = evaluate(workspace)
-        result["resolved"] = result["passed"]
-        return result
+        raw = evaluate(workspace)
+        execution_errors = raw.get("execution_errors") or []
+        requirements = raw.get("requirements") or {}
+        regressions = raw.get("regressions") or {}
+        baseline = raw.get("baseline_regressions") or {}
+        metrics = {
+            "fail_to_pass": metric(
+                "需求验收", requirements.get("passed", 0), requirements.get("total", 0),
+                failed=requirements.get("failed"), status=requirements.get("status")),
+            "pass_to_pass": metric(
+                "回归检查", regressions.get("passed", 0), regressions.get("total", 0),
+                failed=regressions.get("failed"), status=regressions.get("status")),
+        }
+        if baseline:
+            metrics["baseline"] = metric(
+                "修改前回归基准", baseline.get("passed", 0), baseline.get("total", 0),
+                failed=baseline.get("failed"), status=baseline.get("status"))
+        return evaluation_result(
+            resolved=bool(raw.get("passed")),
+            status="evaluation_error" if execution_errors else "completed",
+            execution_valid=not execution_errors,
+            metrics=metrics,
+            new_regressions=raw.get("new_regressions") or [],
+            errors=list(raw.get("environment_errors") or []) + list(execution_errors),
+            cases=raw.get("cases") or [],
+            details=raw,
+        )

@@ -23,7 +23,7 @@ def write_report(summary: dict, events: list[dict], destination: Path, labels=No
         raise ValueError("Report template must contain exactly one data marker")
     payload = json.dumps(
         {"summary": summary, "events": events, "labels": labels or tool_labels()},
-        ensure_ascii=False, allow_nan=False
+        ensure_ascii=False, allow_nan=False, default=str
     )
     for literal, escaped in (
         ("&", "\\u0026"),

@@ -3,6 +3,11 @@
 This is the single entry point for a run. A Task supplies the workspace,
 problem statement, visibility, protocol, toolset and evaluator; the Policy
 decides actions; LocalEnvironment and Session enforce execution and budgets.
+
+A summary is written for every run that has a run directory, including runs
+where preparation, the agent, finalization or evaluation failed. The summary
+records which stage failed so a failed evaluation cannot hide an earlier agent
+failure.
 """
 
 from __future__ import annotations
@@ -59,6 +64,22 @@ def _emit(message):
         print(safe, flush=True)
 
 
+def _write_summary(path, summary):
+    """Write the durable run record even if a value is not plain JSON."""
+    path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8")
+
+
+def _visibility_summary(task):
+    visibility = getattr(task, "visibility", None)
+    if visibility is None:
+        return None
+    return {"readable": list(getattr(visibility, "readable", ())),
+            "editable": list(getattr(visibility, "editable", ())),
+            "protected": list(getattr(visibility, "protected", ()))}
+
+
 def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
         max_steps=None):
     _configure_stdout()
@@ -72,61 +93,114 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
 
     run_id = prefix + "-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
     run_dir = root.resolve() / run_id
-    if policy_factory is not None:
-        policy = policy_factory(run_dir, task)
-    if policy is None:
-        raise ValueError("run() needs a policy or a policy_factory")
     run_dir.mkdir(parents=True, exist_ok=False)
-    workspace = task.prepare(run_dir)
-    (run_dir / "task.txt").write_text(task.problem + "\n", encoding="utf-8")
 
-    env = LocalEnvironment(workspace, visibility=task.visibility,
-                           python=getattr(task, "python", None),
-                           git=getattr(task, "git", "git"),
-                           scratch=run_dir / "scratch")
-    names = (validate_tool_names(list(tools)) if tools is not None
-             else tool_names(task.toolset))
-    specs = {name: TOOL_SPECS[name] for name in names}
-    session = Session(env, run_dir / "controller", task.protocol, specs, set(specs),
-                      initial_manifest=env.manifest())
-    session.activate()
-    history, status, reason = Agent(session, max_steps=max_steps).run(
-        policy, run_dir / "trajectory.jsonl")
+    requested_names = list(tools) if tools is not None else None
+    names = []
+    history = []
+    status, reason = "incomplete", "run did not start"
+    stage = "policy"
+    session = None
+    evaluation = None
+    final_patch = None
+    error = None
+    error_stage = None
+    finalize_error = None
 
-    submission = run_dir / "controller" / "submission" / "final.patch"
-    if not submission.exists():
-        session.finalize(reason)
-    patch = submission if submission.exists() else None
-    evaluation = task.evaluate(run_dir, workspace, patch)
+    try:
+        if requested_names is None:
+            requested_names = tool_names(task.toolset)
+        names = list(requested_names)
+        if policy_factory is not None:
+            policy = policy_factory(run_dir, task)
+        if policy is None:
+            raise ValueError("run() needs a policy or a policy_factory")
+
+        stage = "prepare"
+        workspace = task.prepare(run_dir)
+        (run_dir / "task.txt").write_text(task.problem + "\n", encoding="utf-8")
+
+        stage = "environment"
+        env = LocalEnvironment(workspace, visibility=task.visibility,
+                               python=getattr(task, "python", None),
+                               git=getattr(task, "git", "git"),
+                               scratch=run_dir / "scratch")
+        names = validate_tool_names(requested_names)
+        specs = {name: TOOL_SPECS[name] for name in names}
+        session = Session(env, run_dir / "controller", task.protocol, specs, set(specs),
+                          initial_manifest=env.manifest())
+        session.activate()
+
+        stage = "agent"
+        history, status, reason = Agent(session, max_steps=max_steps).run(
+            policy, run_dir / "trajectory.jsonl")
+
+        stage = "finalize"
+        submission = run_dir / "controller" / "submission" / "final.patch"
+        if not submission.exists():
+            session.finalize(reason)
+        patch = submission if submission.exists() else None
+        if patch is not None:
+            final_patch = run_dir / "final.patch"
+            final_patch.write_bytes(patch.read_bytes())
+
+        stage = "evaluate"
+        evaluation = task.evaluate(run_dir, workspace, patch)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        error_stage = stage
+        if stage == "evaluate":
+            # The agent has already stopped; keep its status and record the
+            # evaluation failure separately so the summary is still useful.
+            evaluation = {"resolved": False, "status": "evaluation_error", "error": error}
+        else:
+            status, reason = "run_failed", error
+            evaluation = {"resolved": False, "status": "not_run", "error": error}
+            if session is not None and session.state.get("phase") == "active":
+                try:
+                    session.finalize(reason)
+                    submission = run_dir / "controller" / "submission" / "final.patch"
+                    if final_patch is None and submission.exists():
+                        final_patch = run_dir / "final.patch"
+                        final_patch.write_bytes(submission.read_bytes())
+                except Exception as exc:
+                    finalize_error = f"{type(exc).__name__}: {exc}"
+
+    if not isinstance(evaluation, dict):
+        evaluation = {"resolved": False, "status": "invalid_evaluation",
+                      "error": f"evaluate() returned {type(evaluation).__name__}"}
     resolved = bool(evaluation.get("resolved", evaluation.get("passed", False)))
-    if patch is not None:
-        final_patch = run_dir / "final.patch"
-        final_patch.write_bytes(patch.read_bytes())
-    else:
+    if final_patch is not None and not final_patch.exists():
         final_patch = None
+    final_diff = None
+    if final_patch is not None:
+        try:
+            final_diff = final_patch.read_text(encoding="utf-8", errors="replace")
+            if len(final_diff) > 500_000:
+                final_diff = final_diff[:500_000] + "\n... (truncated)"
+        except OSError:
+            final_diff = None
 
     usages = [event["llm"] for event in history if "llm" in event]
     summary = {
         "mode": "llm_demo" if hasattr(policy, "model") else "scripted_demo",
-        "task_id": task.task_id,
+        "task_id": getattr(task, "task_id", ""),
         "versions": {
             "action": "v1", "tools": "v1",
             "prompt": getattr(policy, "prompt_version", "v1"),
             "trajectory": "v1",
         },
-        "toolset": task.toolset,
+        "toolset": getattr(task, "toolset", ""),
         "tools_enabled": names,
         "env": "local",
-        "visibility": {"readable": list(task.visibility.readable),
-                       "editable": list(task.visibility.editable),
-                       "protected": list(task.visibility.protected)},
+        "visibility": _visibility_summary(task),
         "model": getattr(policy, "model", "scripted_teaching"),
-        "task": task.problem,
+        "task": getattr(task, "problem", ""),
         "status": status,
         "stop_reason": reason,
         "steps": len(history),
         "max_steps": max_steps,
-        "actions": session.state["action_count"],
+        "actions": session.state["action_count"] if session is not None else 0,
         "model_calls": getattr(policy, "calls", 0),
         "tokens": ({"prompt": sum(item.get("prompt_tokens", 0) for item in usages),
                     "completion": sum(item.get("completion_tokens", 0) for item in usages)}
@@ -140,21 +214,36 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
         "resolved": resolved,
         "evaluation": evaluation,
         "final_patch": final_patch.name if final_patch else None,
+        "final_diff": final_diff,
         "run_dir": run_dir.name,
     }
-    (run_dir / "summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    write_report(summary, history, run_dir / "report.html",
-                 labels=tool_labels_for(names))
+    if error is not None:
+        summary["error"] = error
+        summary["error_stage"] = error_stage
+    if finalize_error is not None:
+        summary["finalize_error"] = finalize_error
+
+    summary_path = run_dir / "summary.json"
+    _write_summary(summary_path, summary)
+
+    try:
+        write_report(summary, history, run_dir / "report.html",
+                     labels=tool_labels_for(names))
+    except Exception as exc:
+        # The summary is the durable record; a report rendering problem must not
+        # hide it. Record the failure and rewrite the summary.
+        summary["report_error"] = f"{type(exc).__name__}: {exc}"
+        _write_summary(summary_path, summary)
 
     _emit(f"\n状态：{status}；可见测试记录保存在 trajectory.jsonl")
     _emit(f"resolved：{str(resolved).lower()}")
-    if isinstance(evaluation.get("requirements"), dict) and "passed" in evaluation["requirements"]:
-        _emit(f"独立需求测试：{evaluation['requirements']['passed']}/"
-              f"{evaluation['requirements']['total']}")
-    if isinstance(evaluation.get("regressions"), dict) and "passed" in evaluation["regressions"]:
-        _emit(f"独立回归测试：{evaluation['regressions']['passed']}/"
-              f"{evaluation['regressions']['total']}")
+    if error is not None:
+        _emit(f"错误（{error_stage}）：{error}")
+    metrics = evaluation.get("metrics")
+    if isinstance(metrics, dict):
+        for key, item in metrics.items():
+            if isinstance(item, dict) and "passed" in item and "total" in item:
+                _emit(f"{item.get('label', key)}：{item['passed']}/{item['total']}")
     if isinstance(evaluation.get("new_regressions"), list):
         _emit(f"新增回归：{len(evaluation['new_regressions'])}")
     _emit(f"报告：{run_dir / 'report.html'}")

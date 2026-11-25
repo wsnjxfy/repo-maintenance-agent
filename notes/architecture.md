@@ -29,7 +29,7 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
 ## 当前状态（2026-11-24）
 
 - toy 已切到 `run.py + ToyTask + LocalEnvironment + Session + handlers`；
-- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v5，toy-v2 用
+- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v6，toy-v2 用
   `replace_text`；
 - `run.py` 的 Task 接口已支持 `python` / `git`、`evaluate(run_dir, workspace, patch)`
   与 `Session.finalize()`；
@@ -40,5 +40,7 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
 - `runtime/backends/` 与 `baseline.py` 已删除；历史版本见
   `git tag archive/sphinx-toolrunner-baseline`；
 - `agent_core/llm.py` 已加入成本/ token 上限，由 `run.py` 的 summary 记录；
+- 評測統一為 `contracts/evaluation.py` 的 canonical envelope；toy 與 Sphinx
+  各自映射，報告只讀 `metrics`／`resolved`／`cases`／`details`；
 - 下一步：用 `--policy llm` 跑真实 Sphinx，再进入开发任务与批次实验；
   `evaluate.py` / `grading.py` 仍可后续顶层化。

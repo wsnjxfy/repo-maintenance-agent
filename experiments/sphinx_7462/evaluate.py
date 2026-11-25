@@ -13,6 +13,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import time
 
@@ -160,8 +161,20 @@ def evaluate(source_archive, record_path, review_manifest, output_dir, python, g
     record_path = Path(record_path).resolve(strict=True)
     review_manifest = Path(review_manifest).resolve(strict=True)
     output_dir = Path(output_dir).absolute()
-    python = Path(python).resolve(strict=True)
-    git = Path(git).resolve(strict=True)
+    # Keep the original path for the interpreter: resolving a venv symlink would
+    # escape the virtual environment and lose its site-packages (e.g. pytest).
+    python = Path(python).absolute()
+    if not python.is_file():
+        raise ValueError(f"Python executable not found: {python}")
+    # ``git`` may be a command name (from PATH) or an explicit executable path.
+    # Resolve command names once here; every later command uses the same path.
+    git_path = Path(git)
+    if not git_path.is_file():
+        found = shutil.which(str(git))
+        if found is None:
+            raise ValueError(f"Git executable not found: {git!r}")
+        git_path = Path(found)
+    git = git_path.resolve(strict=True)
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError("Refusing to overwrite an existing evaluation directory")
     if (not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool)

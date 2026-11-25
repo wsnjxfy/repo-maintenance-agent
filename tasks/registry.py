@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Callable
@@ -72,6 +73,17 @@ def _python_has_pytest(python) -> Check:
     return Check("python 可运行 pytest", ok, detail)
 
 
+def _git_value(options) -> str:
+    """Return an executable path when possible; fall back to the command name."""
+    return str(options.get("git") or shutil.which("git") or "git")
+
+
+def _git_check(options) -> Check:
+    value = _git_value(options)
+    found = shutil.which(value) or (value if Path(value).is_file() else None)
+    return Check("git 可执行", bool(found), str(found or value))
+
+
 def _env_keys_present(require_prices: bool) -> list:
     load_env(ENV_PATH)
     import os
@@ -92,12 +104,13 @@ def _env_keys_present(require_prices: bool) -> list:
 
 def _build_toy(options):
     from mvp.toy_task import ToyTask
-    return ToyTask()
+    return ToyTask(git=_git_value(options))
 
 
 def _preflight_toy(options):
     from mvp.evaluation.demo_eval import FIXTURE
-    checks = [_python_has_pytest(sys.executable),
+    checks = [_git_check(options),
+              _python_has_pytest(sys.executable),
               Check("测试样例目录", FIXTURE.is_dir(), str(FIXTURE))]
     if options.get("policy") == "llm":
         checks += _env_keys_present(require_prices=bool(options.get("budget_usd")))
@@ -118,7 +131,7 @@ def _sphinx_paths(options):
         "review_manifest": Path(options.get("review_manifest") or data_dir / "review.json"),
         "reference_patch": Path(options.get("reference_patch") or data_dir / "reference.patch"),
         "python": Path(options.get("python") or DEFAULT_VENV_PYTHON),
-        "git": str(options.get("git") or "git"),
+        "git": _git_value(options),
     }
 
 
@@ -145,6 +158,7 @@ def _preflight_sphinx(options):
               str(paths["review_manifest"])),
         Check("reference.patch", paths["reference_patch"].is_file(),
               str(paths["reference_patch"])),
+        _git_check(options),
         _python_has_pytest(paths["python"]),
     ]
     if options.get("policy") == "llm":

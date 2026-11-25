@@ -252,3 +252,22 @@
 - 測試數：`agent_core` 28、`tools` 8、`runtime` 18、`mvp` 12、`experiments` 37；合計 **103**，本機全綠（舊 2 個 git 2.37 失敗隨 legacy 測試移除）。
 - 待辦：`--policy llm` 的真實 Sphinx run、開發/測試任務批次、`evaluation/` 頂層化。
 
+## 2026-11-25 ｜ prompt v6 與 summary 保證
+
+- `agent_core/llm.py`：`PROMPT_VERSION = v6`。system prompt 改為精簡的「純 JSON 動作清單」，移除「可用工具／調用」措辭與反面範例；重試訊息只要求一行 JSON，不再把 `KeyError`／`JSONDecodeError` 字串塞回 prompt。
+- `run.py`：prepare、agent、finalize、evaluate 任一階段失敗都會寫 `summary.json`；`error` 與 `error_stage` 記錄失敗階段；evaluate 失敗保留 agent 的 status，另記 `evaluation.status="evaluation_error"`；report 失敗記 `report_error` 但不影響 summary。
+- `scripts/run_task.py` 路徑不再因 evaluate 例外只印 argparse 錯誤；`mvp/demo.py` 的退出碼改看 summary 的 `resolved`。
+- 實測 `deepseek-flash`：prompt v6 下 toy 任務 14 步完成、7/7 + 3/3、`resolved=true`，無額外重試；Sphinx `--policy reference` 以 `run.py + SphinxTask` 跑出 2/2 + 49/49、exit 0。
+- 測試：`agent_core` 31、`tools` 11、`runtime` 20、`mvp` 12、`experiments` 37、`web` 13，全綠。
+- 待辦：DSML 仍可能偶發（prompt v6 的 30 次重放中 1 次 DSML，其餘 JSON 或截斷；重試訊息可回收）；若要根治，下一步改 OpenAI `tools` 協議。
+
+## 2026-11-25 ｜ canonical evaluation 與報告修正
+
+- 新增 `contracts/evaluation.py`：`resolved`／`status`／`execution_valid`／`metrics`／`new_regressions`／`errors`／`cases`／`details` 的共用 envelope。
+- `ToyTask.evaluate()` 把 `requirements`／`regressions`／`baseline_regressions` 映射成 `fail_to_pass`／`pass_to_pass`／`baseline`；`SphinxTask.evaluate()` 把 `grading.f2p_*`／`p2p_*` 映射成同兩個指標，原始 payload 收進 `details`。
+- `run.py` 的 `resolved` 只讀 canonical `resolved`，終端輸出改印 `metrics`；summary 增加 `final_diff`，報告可顯示完整補丁。
+- `agent_core/report_template.html`：評測區塊改為渲染 canonical `metrics`（含 label／passed／total／failed），支援 `resolved`、`new_regressions`、`errors`、逐項 `cases` 與原始 `details`；最終補丁改讀 `summary.final_diff`。舊 toy schema 保留 fallback。
+- `web/static/app.js` 的結果面板同步改讀 `metrics`。
+- 驗證：toy 7/7 + 3/3；Sphinx reference 2/2 + 49/49；用 headless Chrome 渲染失敗的 Sphinx summary（F2P 0/2、P2P 49/49、2 個失敗案例）確認報告不再顯示「未記錄」。
+- 測試：`agent_core` 31、`tools` 11、`runtime` 20、`mvp` 12、`experiments` 37、`web` 13，全綠。
+

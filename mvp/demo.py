@@ -62,7 +62,7 @@ def main(argv=None):
         parser.error(str(exc))
     if args.open:
         webbrowser.open((run_dir / "report.html").as_uri())
-    return 0 if summary["status"] == "completed" and summary["evaluation"]["passed"] else 1
+    return 0 if summary.get("resolved") else 1
 
 
 if __name__ == "__main__":

@@ -154,13 +154,22 @@ function renderResult(runId, summary) {
   const div = $("result-summary");
   const resolved = summary.resolved;
   const ev = summary.evaluation || {};
-  const reqs = ev.requirements, regs = ev.regressions;
-  let f2p = reqs && reqs.total != null ? `F2P ${reqs.passed}/${reqs.total}` : "";
-  let p2p = regs && regs.total != null ? `P2P ${regs.passed}/${regs.total}` : "";
+  const metrics = ev.metrics && typeof ev.metrics === "object" ? ev.metrics : {};
+  let metricText = Object.entries(metrics)
+    .filter(([, m]) => m && m.total != null)
+    .map(([key, m]) => `${m.label || key} ${m.passed ?? "?"}/${m.total}`)
+    .join(" · ");
+  if (!metricText) {
+    const reqs = ev.requirements, regs = ev.regressions;
+    metricText = [reqs && reqs.total != null ? `F2P ${reqs.passed}/${reqs.total}` : "",
+                  regs && regs.total != null ? `P2P ${regs.passed}/${regs.total}` : ""]
+      .filter(Boolean).join(" ");
+  }
   const art = (name) => `/api/runs/${runId}/artifacts/${name}`;
   div.innerHTML =
     `<p class="resolved-${resolved}">resolved: ${resolved}</p>` +
-    (f2p || p2p ? `<p>${f2p} ${p2p}</p>` : "") +
+    (metricText ? `<p>${metricText}</p>` : "") +
+    (ev.status ? `<p class="muted">evaluation: ${ev.status}</p>` : "") +
     `<p>` +
     `<a href="${art("report.html")}" target="_blank">report.html</a> · ` +
     `<a href="${art("summary.json")}" target="_blank">summary.json</a>` +

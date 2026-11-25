@@ -37,7 +37,7 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 # Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
 # attributable. v3: tool table is now derived from the selected toolset.
-PROMPT_VERSION = "v5"
+PROMPT_VERSION = "v6"
 
 # Presentation metadata: the model only emits tool + args (docs/interfaces.md §2.2).
 PHASE_BY_TOOL = {
@@ -55,25 +55,21 @@ PHASE_BY_TOOL = {
     "finish": "提交结果",
 }
 
-SYSTEM_TEMPLATE = """你是一个仓库维护 agent，任务是在给定工作区里修好代码，让可见测试通过。
+SYSTEM_TEMPLATE = """你是仓库维护 agent。你的整个回复必须是一个 JSON 对象，格式固定：
+{{"tool": "<动作名>", "args": {{...}}}}
 
-可用工具（每一步只调用一个）：
+动作名与参数：
 {tools}
 
-输出要求：只输出一个 JSON 对象，不要解释、不要 Markdown 代码块：
-{{"tool": "<工具名>", "args": {{...}}}}
-
-正确示例（{edit_tool}）：
+示例（{edit_tool}）：
 {edit_example}
 
-工作规则：
-1. tests/ 下的文件只读，不要尝试修改它们。
-2. 修改代码后重新调用 run_visible_tests；finish 会冻结并导出补丁，独立评测在结束后进行。
-3. 不要重复读同一个文件；先用 list_files 缩小范围。
-4. 所有参数都放在 args 对象里。例如 {edit_example}；
-   不要写成 {edit_negative}，也不要把工具签名当成顶层字段。
-5. 一次只输出一个 JSON 对象。即使需要读多个文件，也要分成多个步骤，不要在同一则回复里给多个动作。
-6. 推理保持简短；JSON 之外不要输出任何内容。
+规则：
+1. 一次只写一个动作；需要多步时分成多次回复。
+2. tests/ 下的文件不要修改。
+3. 所有参数都放在 args 对象里，不要放在顶层。
+4. 修改代码后运行可见测试；finish 会冻结补丁。
+5. 回复以 {{ 开始、以 }} 结束；JSON 之外不要有任何字符。任务在下一则消息中给出。
 """
 
 
@@ -145,17 +141,13 @@ class LLMPolicy:
             edit_tool = "replace_text"
             example = ('{"tool": "replace_text", "args": '
                        '{"path": "config.py", "old": "...", "new": "..."}}')
-            negative = ('{"tool": "replace_text", "path": "config.py", '
-                        '"old": "...", "new": "..."}')
         else:
             edit_tool = "apply_patch"
             example = ('{"tool": "apply_patch", "args": '
                        '{"patch": "diff --git a/x.py b/x.py ..."}}')
-            negative = '{"tool": "apply_patch", "patch": "diff ..."}'
         return SYSTEM_TEMPLATE.format(tools=tool_table_for(self.tools),
                                       edit_tool=edit_tool,
-                                      edit_example=example,
-                                      edit_negative=negative)
+                                      edit_example=example)
 
     def _clip(self, value):
         text = json.dumps(value, ensure_ascii=False)
@@ -306,7 +298,9 @@ class LLMPolicy:
         for attempt in range(2):
             batch = messages if attempt == 0 else messages + [{
                 "role": "user",
-                "content": f"上一次输出无法使用：{last_error}\n请重新只输出一个合法 JSON 对象。",
+                "content": "上一条回复不是要求的 JSON。只输出一个 JSON 对象，"
+                           "不要输出任何其他字符：\n"
+                           '{"tool": "<动作名>", "args": {...}}',
             }]
             self._reserve(batch)
             started = time.perf_counter()

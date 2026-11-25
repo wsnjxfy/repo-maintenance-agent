@@ -10,8 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from mvp.demo import run
-from evaluation.demo_eval import evaluate
-from mvp.toy_task import VISIBILITY
+from mvp.toy_task import ToyTask, VISIBILITY
 
 
 class ToyV2DemoTests(unittest.TestCase):
@@ -26,9 +25,10 @@ class ToyV2DemoTests(unittest.TestCase):
 
     def test_demo_completes_and_passes_evaluation(self):
         self.assertEqual(self.summary["status"], "completed")
-        self.assertTrue(self.summary["evaluation"]["passed"])
-        self.assertEqual(self.summary["evaluation"]["requirements"]["passed"], 7)
-        self.assertEqual(self.summary["evaluation"]["regressions"]["passed"], 3)
+        self.assertTrue(self.summary["evaluation"]["resolved"])
+        metrics = self.summary["evaluation"]["metrics"]
+        self.assertEqual(metrics["fail_to_pass"]["passed"], 7)
+        self.assertEqual(metrics["pass_to_pass"]["passed"], 3)
         self.assertEqual(self.summary["toolset"], "toy-v2")
         self.assertEqual(self.summary["env"], "local")
 
@@ -56,7 +56,7 @@ class ToyV2DemoTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hj10-toyv2-budget-") as temp:
             summary, _, _ = run(temp, max_steps=2)
         self.assertEqual(summary["status"], "budget_exhausted")
-        self.assertFalse(summary["evaluation"]["passed"])
+        self.assertFalse(summary["evaluation"]["resolved"])
 
     def test_new_regression_is_detected(self):
         with tempfile.TemporaryDirectory(prefix="hj10-toyv2-regression-") as temp:
@@ -65,8 +65,8 @@ class ToyV2DemoTests(unittest.TestCase):
             client = workspace / "client.py"
             client.write_text(client.read_text(encoding="utf-8").replace(
                 '"url": url', '"url": "broken"'), encoding="utf-8")
-            evaluation = evaluate(workspace)
-        self.assertFalse(evaluation["passed"])
+            evaluation = ToyTask().evaluate(Path(temp), workspace)
+        self.assertFalse(evaluation["resolved"])
         self.assertTrue(evaluation["new_regressions"])
 
     def test_visibility_protects_the_visible_tests(self):
