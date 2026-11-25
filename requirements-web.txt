@@ -1,0 +1,6 @@
+# Optional dependencies for the local debug portal (web/server.py) ONLY.
+# The agent core, tools, runtime and experiments stay standard-library-only;
+# nothing imported by run.py needs these. Install just to serve the UI:
+#     pip install -r requirements-web.txt
+fastapi>=0.110
+uvicorn>=0.23

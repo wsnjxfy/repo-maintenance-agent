@@ -43,6 +43,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 
 默认脚本策略不调用模型；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
 
+## 通用启动 CLI 与 Web 门户
+
+比较不同工具组合 / 策略 / 模型时，用注册表驱动的通用入口，而不是各样例各写一套 CLI。样例定义在 `tasks/registry.py`，新增样例只需加一条 `TaskEntry`。
+
+```sh
+# 玩具样例，脚本策略（免 API key）
+python -m scripts.run_task --task toy --policy scripted
+
+# 只开部分工具：工具子集会同时作用于执行层白名单与 LLM 提示
+python -m scripts.run_task --task toy --policy scripted \
+    --tools list_files,read_lines,replace_text,run_visible_tests,finish
+
+# Sphinx（需要 data/ 与 py3.9 venv）：先用 reference 免费冒烟
+python -m scripts.run_task --task sphinx-7462 --policy reference
+```
+
+`summary.json` 新增 `tools_enabled`，记录这次实际启用的工具清单。
+
+**本机 Web 门户**（在浏览器里配置、一键开始、实时看每一步、跑完直接开 `report.html`）：
+
+```sh
+pip install -r requirements-web.txt   # 仅门户需要 fastapi/uvicorn；核心代码仍零依赖
+python -m web.server                  # 默认 http://127.0.0.1:8000
+```
+
+左侧选样例 / 策略 / 模型并勾选工具（`finish` 固定、至少一个编辑工具），右侧实时显示步骤、日志、花费与结果链接，下方是历史 run 对照表。按 **开始** 前可跑 preflight 检查数据档、解释器与 API key。
+
+安全约束：只绑 `127.0.0.1`（会执行任意仓库代码）；API key 留在服务端由子程序读取，不下发浏览器；artifacts 只在该 run 目录内取档（拒绝 `..`）；默认同时只允许 1 个 run。
+
 ## 演示内容
 
 任务：让一个小型 Python 下载请求支持超时配置。CLI 优先于配置，未提供时保持 5；最终选中值须为正的有限整数或浮点数（拒绝 bool 和字符串）；仅校验选中值，保留 URL 和默认请求行为。这里构造请求字典，不发起真实网络请求，也不演示重试实现。

@@ -70,7 +70,32 @@ class TestLLMPolicy(unittest.TestCase):
             policy.next_action([])
         self.assertEqual(policy.calls, 2)
         self.assertEqual(policy.last_usage["attempts"], 2)
-        self.assertIn("unknown tool", policy.last_usage["last_error"])
+        self.assertIn("not enabled", policy.last_usage["last_error"])
+
+    def test_explicit_tool_subset_drives_prompt_and_validation(self):
+        sent = []
+
+        def transport(payload):
+            sent.append(payload)
+            return self.reply('{"tool": "list_files", "args": {"path": "."}}')
+
+        policy = LLMPolicy(task="t", model="m", transport=transport,
+                           tools=["list_files", "finish"])
+        action = policy.next_action([])
+        self.assertEqual(action.tool, "list_files")
+        system = sent[0]["messages"][0]["content"]
+        self.assertIn("- list_files(", system)
+        # A tool that exists in the catalog but is not in this run's subset is
+        # absent from the advertised tool table.
+        self.assertNotIn("- read_lines(", system)
+
+    def test_tool_outside_subset_is_rejected(self):
+        policy = LLMPolicy(
+            task="t", model="m", tools=["list_files", "finish"],
+            transport=lambda payload: self.reply('{"tool": "replace_text", "args": {}}'))
+        with self.assertRaises(RuntimeError):
+            policy.next_action([])
+        self.assertIn("not enabled", policy.last_usage["last_error"])
 
     def test_call_log_records_every_attempt(self):
         with tempfile.TemporaryDirectory() as temp:

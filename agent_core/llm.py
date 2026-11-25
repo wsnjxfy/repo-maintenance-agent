@@ -26,7 +26,9 @@ import urllib.request
 
 from .action_parsing import extract_json, normalize_args, strip_fence
 from .agent import Action, PolicyBudgetExceeded
-from tools.toolsets import DEFAULT_TOOLSET, tool_names, tool_table
+from tools.toolsets import (
+    DEFAULT_TOOLSET, tool_names, tool_table_for, validate_tool_names,
+)
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -97,7 +99,7 @@ class LLMPolicy:
                  transport=None, temperature=0.0, max_tokens=4096, timeout=120,
                  max_history=6, observation_limit=1200,
                  input_price=0.0, output_price=0.0, log_path=None,
-                 json_mode="auto", toolset=DEFAULT_TOOLSET,
+                 json_mode="auto", toolset=DEFAULT_TOOLSET, tools=None,
                  budget_usd=None, max_total_tokens=None):
         self.task = task
         self.model = model
@@ -115,6 +117,7 @@ class LLMPolicy:
         self.json_mode = json_mode if json_mode in {"auto", "on", "off"} else "auto"
         self.json_supported = True
         self.toolset = toolset
+        self.tools = validate_tool_names(tools) if tools is not None else tool_names(toolset)
         self.prompt_version = PROMPT_VERSION
         self.calls = 0
         self.last_usage = None
@@ -137,7 +140,7 @@ class LLMPolicy:
 
     # --- prompt -----------------------------------------------------------------
     def system_prompt(self):
-        names = tool_names(self.toolset)
+        names = self.tools
         if "replace_text" in names:
             edit_tool = "replace_text"
             example = ('{"tool": "replace_text", "args": '
@@ -149,7 +152,7 @@ class LLMPolicy:
             example = ('{"tool": "apply_patch", "args": '
                        '{"patch": "diff --git a/x.py b/x.py ..."}}')
             negative = '{"tool": "apply_patch", "patch": "diff ..."}'
-        return SYSTEM_TEMPLATE.format(tools=tool_table(self.toolset),
+        return SYSTEM_TEMPLATE.format(tools=tool_table_for(self.tools),
                                       edit_tool=edit_tool,
                                       edit_example=example,
                                       edit_negative=negative)
@@ -235,8 +238,8 @@ class LLMPolicy:
         data, extra = self._extract_json(self._content(reply))
         self.last_extra_actions = extra
         tool = data["tool"]
-        if tool not in tool_names(self.toolset):
-            raise ValueError(f"unknown tool {tool!r} for toolset {self.toolset!r}")
+        if tool not in self.tools:
+            raise ValueError(f"tool {tool!r} is not enabled for this run")
         return Action(tool, self._normalize_args(data), PHASE_BY_TOOL.get(tool, ""), "")
 
     def _cost(self, prompt_tokens, completion_tokens):
@@ -352,7 +355,7 @@ def _first_env(*names, default=""):
 
 
 def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
-                    toolset=None, **kwargs):
+                    toolset=None, tools=None, **kwargs):
     """Build an LLMPolicy for any OpenAI-compatible endpoint.
 
     Environment (``.env`` or process):
@@ -383,5 +386,6 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
         output_price=float(_first_env("LLM_PRICE_OUTPUT", "DEEPSEEK_PRICE_OUTPUT", default="0")),
         json_mode=_first_env("LLM_JSON_MODE", default="auto").strip().lower(),
         toolset=toolset or _first_env("LLM_TOOLSET", default=DEFAULT_TOOLSET),
+        tools=tools,
         **kwargs,
     )

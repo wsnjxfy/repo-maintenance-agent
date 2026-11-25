@@ -9,9 +9,11 @@ This repository is a research scaffold for a repository-maintenance agent
 - **Encoding**: Windows CI stdout is cp1252. Chinese console output must go
   through an encoding-safe emitter (`_emit`) or UTF-8 stdout configuration.
   Do **not** "fix" this by removing Chinese from user-facing output.
-- **Five test suites**:
+- **Core test suites** (standard library only):
   `agent_core/tests`, `tools/tests`, `runtime/tests`, `mvp/tests`,
   `experiments/sphinx_7462/tests`. Run the relevant ones before committing.
+  The optional debug portal adds `web/tests` (needs `requirements-web.txt`);
+  run it when touching `tasks/`, `scripts/` or `web/`.
 - **Known local-only failures**: none after removing the legacy
   `ToolRunner` tests. If equivalent patch tests are reintroduced, check git
   version instead of weakening assertions.

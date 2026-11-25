@@ -20,7 +20,7 @@ from agent_core.report import write_report
 from runtime.local import LocalEnvironment
 from runtime.session import Session
 from tools.specs import TOOL_SPECS
-from tools.toolsets import tool_labels, tool_names
+from tools.toolsets import tool_labels_for, tool_names, validate_tool_names
 
 
 class Task(Protocol):
@@ -59,7 +59,8 @@ def _emit(message):
         print(safe, flush=True)
 
 
-def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=None):
+def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
+        max_steps=None):
     _configure_stdout()
     started = time.perf_counter()
     root = Path(output_root) if output_root is not None else Path(
@@ -83,7 +84,9 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
                            python=getattr(task, "python", None),
                            git=getattr(task, "git", "git"),
                            scratch=run_dir / "scratch")
-    specs = {name: TOOL_SPECS[name] for name in tool_names(task.toolset)}
+    names = (validate_tool_names(list(tools)) if tools is not None
+             else tool_names(task.toolset))
+    specs = {name: TOOL_SPECS[name] for name in names}
     session = Session(env, run_dir / "controller", task.protocol, specs, set(specs),
                       initial_manifest=env.manifest())
     session.activate()
@@ -112,6 +115,7 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
             "trajectory": "v1",
         },
         "toolset": task.toolset,
+        "tools_enabled": names,
         "env": "local",
         "visibility": {"readable": list(task.visibility.readable),
                        "editable": list(task.visibility.editable),
@@ -141,7 +145,7 @@ def run(task, policy=None, *, policy_factory=None, output_root=None, max_steps=N
     (run_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     write_report(summary, history, run_dir / "report.html",
-                 labels=tool_labels(task.toolset))
+                 labels=tool_labels_for(names))
 
     _emit(f"\n状态：{status}；可见测试记录保存在 trajectory.jsonl")
     _emit(f"resolved：{str(resolved).lower()}")

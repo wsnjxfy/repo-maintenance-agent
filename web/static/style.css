@@ -1,0 +1,99 @@
+:root {
+  --bg: #0f1419;
+  --panel: #1a2029;
+  --line: #2b333f;
+  --fg: #e6e9ee;
+  --muted: #8a93a0;
+  --accent: #4da3ff;
+  --ok: #3fb950;
+  --bad: #f05d5d;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+header {
+  display: flex; align-items: baseline; gap: 1rem;
+  padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 1.1rem; margin: 0; }
+.hint { color: var(--muted); font-size: 0.8rem; }
+main {
+  display: grid; grid-template-columns: 360px 1fr; gap: 1rem;
+  padding: 1rem; align-items: start;
+}
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 1rem;
+}
+.panel h2 { margin-top: 0; font-size: 1rem; }
+label { display: block; margin: 0.6rem 0; color: var(--muted); font-size: 0.85rem; }
+label input, label select {
+  display: block; width: 100%; margin-top: 0.25rem;
+  background: #10151c; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 5px; padding: 0.4rem;
+}
+.muted { color: var(--muted); }
+.notes { color: var(--muted); font-size: 0.78rem; margin: 0.2rem 0 0.6rem; }
+fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0.6rem 0; }
+legend { color: var(--muted); padding: 0 0.4rem; }
+#tools label.tool-row {
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: 0.5rem; margin: 0.3rem 0; color: var(--fg);
+  position: relative; cursor: pointer;
+}
+#tools label.tool-row.disabled { color: var(--muted); cursor: default; }
+/* Native checkboxes must stay their intrinsic size, not the panel-wide
+   width:100% the generic `label input` rule applies to text fields. */
+#tools input[type="checkbox"] {
+  width: auto; min-width: 0; margin: 0; flex: none; display: inline-block;
+}
+#tools .name { flex: 0 0 auto; }
+#tools .tag {
+  font-size: 0.7rem; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 10px; padding: 0 0.4rem; white-space: nowrap; flex: none;
+}
+#tools .tip {
+  display: none; position: absolute; left: 0; top: 100%; z-index: 20;
+  margin-top: 4px; width: max-content; max-width: 280px;
+  background: #0b0f14; color: var(--fg);
+  border: 1px solid var(--accent); border-radius: 6px;
+  padding: 0.4rem 0.6rem; font-size: 0.78rem; line-height: 1.4;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+#tools label.tool-row:hover .tip { display: block; }
+.actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+button {
+  background: #222c38; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 0.5rem 0.9rem; cursor: pointer;
+}
+button.primary { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.preflight ul { list-style: none; padding: 0; margin: 0.5rem 0; }
+.preflight li { display: flex; gap: 0.5rem; font-size: 0.8rem; }
+.preflight li .dot { width: 0.8rem; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.error { color: var(--bad); min-height: 1.2em; }
+.status-bar { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; margin-bottom: 0.6rem; }
+.status-bar span b { color: var(--fg); }
+.columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.steps { margin: 0; padding-left: 1.4rem; max-height: 260px; overflow: auto; }
+.steps li.ok::marker { color: var(--ok); }
+.steps li.bad::marker { color: var(--bad); }
+.log {
+  background: #0b0f14; border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.6rem; max-height: 260px; overflow: auto; white-space: pre-wrap;
+  font: 12px/1.45 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+#result-summary { margin: 0.8rem 0; }
+#result-summary .resolved-true { color: var(--ok); font-weight: 600; }
+#result-summary .resolved-false { color: var(--bad); font-weight: 600; }
+#result-summary a { color: var(--accent); }
+iframe#report { width: 100%; height: 480px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.4rem; }
+th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; }
+td a { color: var(--accent); }

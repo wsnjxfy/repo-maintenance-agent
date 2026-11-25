@@ -5,6 +5,7 @@ Prompt tables, report labels and dispatch validation all derive from this
 single mapping, so a tool cannot be advertised without a spec.
 """
 
+from tools.handlers import HANDLERS
 from tools.specs import TOOL_SPECS
 
 
@@ -55,14 +56,56 @@ def tool_names(name=DEFAULT_TOOLSET):
     return list(get_toolset(name)["tools"])
 
 
+def available_tools():
+    """Names of every spec that can actually be dispatched (has a handler).
+
+    ``TOOL_SPECS`` still carries a few historical entries with no handler in
+    ``HANDLERS``; exposing one would raise ``KeyError`` at dispatch. A UI or a
+    ``--tools`` list must choose from this set only.
+    """
+    return [name for name, spec in TOOL_SPECS.items() if spec["handler"] in HANDLERS]
+
+
+def validate_tool_names(names):
+    """Validate an explicit tool-name list and return it deduplicated.
+
+    Rejects an empty list, unknown names, duplicates and specs without a
+    handler. This is the gate between a caller-chosen subset (checkboxes,
+    ``--tools``) and the dispatch layer.
+    """
+    ordered = list(names)
+    if not ordered:
+        raise ValueError("Tool list must be nonempty")
+    if len(set(ordered)) != len(ordered):
+        raise ValueError("Tool list contains duplicate names")
+    runnable = set(available_tools())
+    missing = [name for name in ordered if name not in TOOL_SPECS]
+    if missing:
+        raise ValueError("Unknown tools: " + ", ".join(missing))
+    no_handler = [name for name in ordered if name not in runnable]
+    if no_handler:
+        raise ValueError("Tools without a handler: " + ", ".join(no_handler))
+    return ordered
+
+
 def specs_for(name=DEFAULT_TOOLSET):
-    return {tool: TOOL_SPECS[tool] for tool in tool_names(name)}
+    return specs_for_names(tool_names(name))
+
+
+def specs_for_names(names):
+    return {tool: TOOL_SPECS[tool] for tool in names}
 
 
 def tool_table(name=DEFAULT_TOOLSET):
     """Render only the enabled tools for a model prompt."""
+    return tool_table_for(tool_names(name))
+
+
+def tool_table_for(names):
+    """Render an explicit list of tools for a model prompt."""
     lines = []
-    for tool, spec in specs_for(name).items():
+    for tool in names:
+        spec = TOOL_SPECS[tool]
         args = ", ".join(f"{key}: {kind}" for key, kind in spec["args"].items()) or "无"
         lines.append(f"- {tool}({args})：{spec['doc']}")
     return "\n".join(lines)
@@ -70,4 +113,9 @@ def tool_table(name=DEFAULT_TOOLSET):
 
 def tool_labels(name=DEFAULT_TOOLSET):
     """Report labels for the enabled tools only."""
-    return {tool: TOOL_SPECS[tool]["label"] for tool in tool_names(name)}
+    return tool_labels_for(tool_names(name))
+
+
+def tool_labels_for(names):
+    """Report labels for an explicit list of tools."""
+    return {tool: TOOL_SPECS[tool]["label"] for tool in names}

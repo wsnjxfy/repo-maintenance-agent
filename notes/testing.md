@@ -1,19 +1,29 @@
 # 测试与已知失败
 
-## 五组测试
+## 核心五组 + 门户套件
 
 ```powershell
-python -B -m unittest discover -s agent_core/tests   # 28
-python -B -m unittest discover -s tools/tests        # 8
-python -B -m unittest discover -s runtime/tests      # 18
-python -B -m unittest discover -s mvp/tests          # 12
-python -B -m unittest discover -s experiments/sphinx_7462/tests  # 37
+python -B -m unittest discover -s agent_core/tests   # 核心
+python -B -m unittest discover -s tools/tests        # 目录 / 工具子集守门
+python -B -m unittest discover -s runtime/tests
+python -B -m unittest discover -s mvp/tests
+python -B -m unittest discover -s experiments/sphinx_7462/tests
+python -B -m unittest discover -s web/tests          # 调试门户（registry / CLI / server）
 ```
+
+前五组是 AGENTS.md 规定的核心套件，标准库即可运行。`web/tests` 覆盖 Web
+门户（`tasks/registry.py`、`scripts/run_task.py`、`web/server.py`）；其中
+server 测试需要 `fastapi`/`httpx`（见 `requirements-web.txt`），门户以外的代码
+仍保持零依赖。
 
 ## 已知本机失败
 
-无。旧 `test_repo_backend.py` 的 2 个 git 2.37 失败随 `ToolRunner` 一起移除；
-若重新引入等价 patch 测试，仍应按 git 版本判定。
+- 旧 `test_repo_backend.py` 的 2 个 git 2.37 失败随 `ToolRunner` 一起移除；
+  若重新引入等价 patch 测试，仍应按 git 版本判定。
+- 本机（Linux，`/usr/bin/python3` 未装 pytest）`runtime` 的
+  `test_vertical_slice.test_read_patch_test_finish` 与 `experiments/sphinx_7462`
+  的 4 个用例失败，是环境缺 pytest / py3.9 venv 所致，与门户改动无关；门户的
+  preflight 会把这类环境问题显示成红灯，避免误判成“模型没修好”。
 
 ## 常见误判
 
