@@ -271,3 +271,45 @@
 - 驗證：toy 7/7 + 3/3；Sphinx reference 2/2 + 49/49；用 headless Chrome 渲染失敗的 Sphinx summary（F2P 0/2、P2P 49/49、2 個失敗案例）確認報告不再顯示「未記錄」。
 - 測試：`agent_core` 31、`tools` 11、`runtime` 20、`mvp` 12、`experiments` 37、`web` 13，全綠。
 
+## 2026-11-25 ｜ Web run 歷史持久化與 Sphinx 路徑修正
+
+- `web/server.py`：每個 run 寫 `runs/web/<id>/web-run.json`（config、created、status、returncode）；啟動時 `load_runs()` 掃描 `runs/web/`，載入 `web.log` 與 trajectory；沒有 metadata 的舊 run 由 `summary.json` 推斷 task/policy/status。
+- 關掉 server 後重開仍會列出歷史；點歷史列可回看 logs/steps/report；SSE 對已完成 run 會重放日誌後送 `done`。
+- `tasks/registry.py`：Sphinx 預設 Python 改為依平台找 `experiments/sphinx_7462/.venv39/Scripts/python.exe`（Windows）或 `bin/python`，支援 `SPHINX_PYTHON` 覆寫；修正入口的 `FileNotFoundError`。
+- `requirements-web.txt` 加入 `httpx2`（FastAPI TestClient 需要）；`README` / `notes/testing.md` 同步。
+- 測試：核心 111 + `web` 16，全綠。
+
+## 2026-11-25 ｜ 每個 tool 的版本快照
+
+- `tools/specs.py`：12 個 tool 都加 `version: 0`（source of truth）。
+- `tools/toolsets.py`：新增 `tool_versions(names)`，只快照指定工具。
+- `run.py`：run 開始時把 `tool_versions` 寫入 `summary.json`；失敗的 run 也會保留已選工具的版本。
+- `web/server.py`：`web-run.json` 的 config 加入同一份 snapshot，`/api/runs` 回傳 `tool_versions`。
+- `web/static`：歷史表新增「tools 版本」欄，逐項顯示 `tool vN`；舊 run 沒有欄位時顯示 `—`。
+- 新增 `tools/tests/test_versions.py` 與 `notes/tool-versioning.md`；版號仍需人工在 handler/spec 變更時 +1。
+- 測試：`agent_core` 31、`tools` 14、`runtime` 20、`mvp` 12、`experiments` 37、`web` 16，全綠。
+
+## 2026-11-25 ｜ Prompt v7：通用 workspace hint
+
+- `agent_core/llm.py`：`PROMPT_VERSION = "v7"`；新增 `DEFAULT_WORKSPACE_HINT`，移除 `tests/test_visible.py` 的 task-specific 句子。
+- `LLMPolicy` 接受 `workspace_hint`，Task 可 override；`scripts/run_task.py` 會傳入 `task.workspace_hint`。
+- `run.py`：summary 增加 `prompt_version`（`versions.prompt` 保留）；舊 run 仍可從 `versions.prompt` 讀取。
+- `web/server.py`：LLM run 的 `web-run.json` config 記錄 `prompt_version`；歷史表新增 prompt 欄，舊 run 從 summary fallback。
+- 測試：新增 prompt hint 回歸測試；`agent_core` 33、`tools` 14、`runtime` 20、`mvp` 12、`experiments` 37、`web` 17，全綠。
+- 注意：舊 Sphinx LLM run 使用 v6，含 `tests/test_visible.py` 的誤導，不能和新 v7 結果直接比較。
+
+## 2026-11-25 ｜ 解析與 DSML 重試分開計數
+
+- `LLMPolicy`：新增 `max_parse_attempts`（正常非法 JSON）與 `max_dsml_retries`（DSML/XML 工具標記）；預設 2 / 2。
+- DSML 失敗不增加 `parse_attempts`，但每次 API 呼叫仍計入 `model_calls`、tokens、cost；另有 `max_api_calls = max_parse_attempts + max_dsml_retries` 防止無限重試。
+- `last_usage` 增加 `parse_attempts`、`dsml_retries`；`summary` 增加 `retry_policy`。
+- `policy_from_env` 讀 `LLM_MAX_PARSE_ATTEMPTS` / `LLM_MAX_DSML_RETRIES`；`scripts/run_task.py` 加 `--max-parse-attempts` / `--max-dsml-retries`。
+- 測試：`agent_core` 37、`tools` 14、`runtime` 20、`mvp` 12、`experiments` 37、`web` 17，全綠。
+
+## 2026-11-25 ｜ 修正 finalize 的 WindowsPath 序列化錯誤
+
+- 原因：`SphinxTask.python` 是 `Path`，傳入 `LocalEnvironment` 後成為 `HandlerContext.python`；`run_visible_tests` 把它放進回傳的 `command` 清單，`Session` 將 `last_visible_tests` 寫入 `state.json` 時 `json.dumps` 失敗，最後 `finalize` 的 `submission.json` 也失敗。
+- `LocalEnvironment.__init__` 現在把 `python` / `git` 正規化為字串。
+- `runtime/session._write_json` 加 `default=str` 作防禦；新增 `runtime/tests/test_path_serialization.py`。
+- 測試：`agent_core` 37、`tools` 14、`runtime` 21、`mvp` 12、`experiments` 37、`web` 17，全綠。
+

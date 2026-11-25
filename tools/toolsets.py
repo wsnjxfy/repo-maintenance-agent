@@ -119,3 +119,9 @@ def tool_labels(name=DEFAULT_TOOLSET):
 def tool_labels_for(names):
     """Report labels for an explicit list of tools."""
     return {tool: TOOL_SPECS[tool]["label"] for tool in names}
+
+
+def tool_versions(names=None):
+    """Snapshot per-tool implementation versions for a run."""
+    selected = list(names) if names is not None else list(TOOL_SPECS)
+    return {name: TOOL_SPECS[name]["version"] for name in selected}

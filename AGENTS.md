@@ -25,6 +25,10 @@ This repository is a research scaffold for a repository-maintenance agent
 - **Toolset vs visibility**: a toolset only chooses tool names; readable /
   editable / protected paths belong to the instance (`Visibility`), enforced
   by `LocalEnvironment`, never by handlers or toolsets.
+- **Tool versions**: each `TOOL_SPECS` entry has an integer `version` starting
+  at `0`; bump the affected tool in the same commit as a behavior/handler
+  change. `run.py` snapshots enabled versions into `tool_versions`; see
+  `notes/tool-versioning.md`.
 - **Legacy removed**: `runtime/backends/repo.py` (`ToolRunner`) and
   `experiments/sphinx_7462/baseline.py` are gone. Historical code is at
   `git tag archive/sphinx-toolrunner-baseline`; do not reintroduce it.

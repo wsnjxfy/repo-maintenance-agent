@@ -21,8 +21,8 @@ class LocalEnvironment:
         self.workspace = Path(workspace).resolve()
         if not self.workspace.is_dir():
             raise ValueError("Workspace must be an existing directory")
-        self.python = python or sys.executable
-        self.git = git
+        self.python = str(python) if python else sys.executable
+        self.git = str(git) if git else "git"
         self.protected_paths = tuple(protected_paths)
         if visibility is None:
             visibility = Visibility(protected=tuple(protected_paths))

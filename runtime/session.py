@@ -21,7 +21,8 @@ def _sha(data: bytes) -> str:
 
 
 def _write_json(path: Path, value) -> None:
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n",
+                    encoding="utf-8")
 
 
 class Session:

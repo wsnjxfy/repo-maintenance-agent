@@ -34,9 +34,10 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from agent_core.llm import PROMPT_VERSION
 from tasks.registry import TASKS, get_entry
 from tools.specs import TOOL_SPECS
-from tools.toolsets import available_tools, validate_tool_names
+from tools.toolsets import available_tools, tool_versions, validate_tool_names
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -49,16 +50,38 @@ app = FastAPI(title="HJ10 repo-maintenance portal")
 
 
 class RunRecord:
-    def __init__(self, web_run_id, config, output_dir):
+    def __init__(self, web_run_id, config, output_dir, created=None,
+                 status="running", returncode=None):
         self.id = web_run_id
         self.config = config
-        self.output_dir = output_dir
-        self.created = time.time()
-        self.status = "running"      # running | done | error | cancelled
-        self.returncode = None
+        self.output_dir = Path(output_dir)
+        self.created = float(created) if created is not None else time.time()
+        self.status = status       # running | done | error | cancelled
+        self.returncode = returncode
         self.proc = None
-        self.log_lines = []
+        self.log_lines = self._load_log()
         self.done = threading.Event()
+        self._persist()
+
+    def _load_log(self):
+        path = self.output_dir / "web.log"
+        if not path.is_file():
+            return []
+        try:
+            return path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return []
+
+    def _persist(self):
+        """Write portable metadata so history survives a server restart."""
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        path = self.output_dir / "web-run.json"
+        temp = path.with_name(path.name + ".tmp")
+        data = {"id": self.id, "config": self.config, "created": self.created,
+                "status": self.status, "returncode": self.returncode}
+        temp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+        os.replace(str(temp), str(path))
 
     def asdict(self):
         return {
@@ -68,8 +91,26 @@ class RunRecord:
             "status": self.status,
             "returncode": self.returncode,
             "run_dir": self._run_subdir_name(),
+            "tool_versions": self.tool_versions(),
+            "prompt_version": self.prompt_version(),
             "summary": self.summary(),
         }
+
+    def prompt_version(self):
+        if self.config.get("prompt_version"):
+            return self.config["prompt_version"]
+        if self.config.get("policy") != "llm":
+            return None
+        summary = self.summary() or {}
+        versions = summary.get("versions") or {}
+        return summary.get("prompt_version") or versions.get("prompt")
+
+    def tool_versions(self):
+        versions = self.config.get("tool_versions")
+        if versions:
+            return versions
+        summary = self.summary() or {}
+        return summary.get("tool_versions") or {}
 
     # The actual run lands in a single child dir of output_dir.
     def run_subdir(self):
@@ -141,6 +182,7 @@ def _reader(record):
         record.returncode = record.proc.wait()
         if record.status == "running":
             record.status = "done" if record.returncode in (0, 1) else "error"
+        record._persist()
         record.done.set()
 
 
@@ -165,6 +207,74 @@ def _launch(record, config):
         encoding="utf-8", errors="replace", bufsize=1,
         start_new_session=True)
     threading.Thread(target=_reader, args=(record,), daemon=True).start()
+
+
+# --- persisted history ------------------------------------------------------
+
+def _read_meta(path):
+    meta_path = path / "web-run.json"
+    if not meta_path.is_file():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+
+
+def _infer_config(path):
+    """Reconstruct enough config for runs created before web-run.json existed."""
+    summary = None
+    for child in sorted(path.iterdir()):
+        if child.is_dir() and (child / "summary.json").is_file():
+            try:
+                summary = json.loads((child / "summary.json").read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                summary = None
+            break
+    summary = summary or {}
+    task_id = summary.get("task_id") or "unknown"
+    task = {"toy-timeout": "toy",
+            "sphinx-doc__sphinx-7462": "sphinx-7462"}.get(task_id, task_id)
+    mode = summary.get("mode", "")
+    policy = ("llm" if mode == "llm_demo"
+              else "scripted" if mode == "scripted_demo" else "unknown")
+    return {"task": task, "policy": policy,
+            "tools": list(summary.get("tools_enabled") or []),
+            "model": summary.get("model"), "max_steps": summary.get("max_steps"),
+            "budget_usd": summary.get("budget_usd")}
+
+
+def _infer_status(path, summary):
+    if not summary:
+        return "error"
+    return "error" if summary.get("status") in ("error", "run_failed") else "done"
+
+
+def load_runs():
+    """Load durable run directories into the in-memory registry."""
+    RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+    loaded = []
+    for path in sorted(RUNS_ROOT.iterdir(), key=lambda p: p.name):
+        if not path.is_dir():
+            continue
+        meta = _read_meta(path)
+        config = meta.get("config") or _infer_config(path)
+        status = meta.get("status") or "running"
+        created = meta.get("created") or path.stat().st_mtime
+        record = RunRecord(path.name, config, path, created=created,
+                           status=status, returncode=meta.get("returncode"))
+        if not meta.get("status"):
+            record.status = _infer_status(path, record.summary())
+        if record.status == "running":
+            # The server that owned this process is gone; do not pretend it runs.
+            record.status = "error"
+        record._persist()
+        record.done.set()
+        loaded.append(record)
+    with RUNS_LOCK:
+        RUNS.clear()
+        RUNS.update({record.id: record for record in loaded})
+    return loaded
 
 
 # --- request models ---------------------------------------------------------
@@ -242,7 +352,9 @@ def create_run(req: RunRequest):
         output_dir.mkdir(parents=True, exist_ok=True)
         config = {"task": req.task, "tools": tools, "policy": req.policy,
                   "model": req.model, "max_steps": req.max_steps,
-                  "budget_usd": req.budget_usd}
+                  "budget_usd": req.budget_usd,
+                  "prompt_version": PROMPT_VERSION if req.policy == "llm" else None,
+                  "tool_versions": tool_versions(tools)}
         record = RunRecord(web_run_id, config, output_dir)
         RUNS[web_run_id] = record
         _launch(record, config)
@@ -277,6 +389,7 @@ def cancel_run(run_id: str):
             os.killpg(os.getpgid(record.proc.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
             pass
+        record._persist()
     return {"id": run_id, "status": record.status}
 
 
@@ -353,7 +466,9 @@ def main(argv=None):
     if args.host not in ("127.0.0.1", "localhost"):
         parser.error("Refusing to bind a code-executing debug server to a non-loopback host.")
     RUNS_ROOT.mkdir(parents=True, exist_ok=True)
-    print(f"HJ10 portal: http://{args.host}:{args.port}", flush=True)
+    loaded = load_runs()
+    print(f"HJ10 portal: http://{args.host}:{args.port} ({len(loaded)} historical runs)",
+          flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

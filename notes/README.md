@@ -9,6 +9,7 @@
 | `windows-crlf.md` | 改 `replace_text`、Windows 下文本比對失败 |
 | `testing.md` | 跑测试、判断失败是否已知 |
 | `architecture.md` | 改分层、toolset、visibility、observation |
+| `tool-versioning.md` | 改 handler/spec、更新 tool version、理解 summary.tool_versions |
 | `git-workflow.md` | 提交、push、CI、与 `hxy` 分支协作 |
 
 规则：**同类失败第二次出现时，先更新对应笔记，再改代码。**

@@ -182,6 +182,7 @@ function renderResult(runId, summary) {
 }
 
 function startStream(runId) {
+  if (SOURCE) { SOURCE.close(); SOURCE = null; }
   SOURCE = new EventSource(`/api/runs/${runId}/stream`);
   SOURCE.addEventListener("log", (e) => {
     const log = $("log");
@@ -241,15 +242,34 @@ async function loadHistory() {
     for (const r of runs) {
       const s = r.summary || {};
       const tr = document.createElement("tr");
+      tr.className = "history-row";
       const time = new Date(r.created * 1000).toLocaleTimeString();
       const report = r.run_dir
         ? `<a href="/api/runs/${r.id}/artifacts/report.html" target="_blank">report</a>` : "";
+      const versions = r.tool_versions || {};
+      const versionText = Object.entries(versions)
+        .map(([name, version]) => `${name} v${version}`).join(" · ") || "—";
       tr.innerHTML = `<td>${time}</td><td>${r.config.task}</td><td>${r.config.policy}</td>` +
-        `<td class="muted">${r.config.tools.length} 个</td><td>${r.status}</td>` +
+        `<td>${r.prompt_version || "—"}</td>` +
+        `<td class="muted">${r.config.tools.length} 个</td>` +
+        `<td class="tool-versions" title="${versionText}">${versionText}</td>` +
+        `<td>${r.status}</td>` +
         `<td class="resolved-${s.resolved}">${s.resolved ?? ""}</td><td>${report}</td>`;
+      tr.addEventListener("click", (event) => {
+        if (event.target.closest("a")) return;
+        openHistoryRun(r.id);
+      });
       tb.append(tr);
     }
   } catch (e) { /* ignore */ }
+}
+
+function openHistoryRun(runId) {
+  resetResults();
+  CURRENT = runId;
+  $("start").disabled = true;
+  $("cancel").disabled = true;
+  startStream(runId);
 }
 
 async function init() {

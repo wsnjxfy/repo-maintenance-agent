@@ -29,7 +29,7 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
 ## 当前状态（2026-11-24）
 
 - toy 已切到 `run.py + ToyTask + LocalEnvironment + Session + handlers`；
-- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v6，toy-v2 用
+- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v7，toy-v2 用
   `replace_text`；
 - `run.py` 的 Task 接口已支持 `python` / `git`、`evaluate(run_dir, workspace, patch)`
   与 `Session.finalize()`；

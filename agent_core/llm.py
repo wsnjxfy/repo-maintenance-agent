@@ -37,7 +37,13 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 # Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
 # attributable. v3: tool table is now derived from the selected toolset.
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v7"
+
+DEFAULT_WORKSPACE_HINT = (
+    "工作区是仓库根目录；先用 list_files 查看 tests/ 或其他目录，"
+    "再用 search_text 找测试；测试文件通常名称含 'test'"
+    "（例如 test_*.py），但不要假设具体文件名。"
+)
 
 # Presentation metadata: the model only emits tool + args (docs/interfaces.md §2.2).
 PHASE_BY_TOOL = {
@@ -94,9 +100,10 @@ class LLMPolicy:
     def __init__(self, task, model=DEFAULT_MODEL, api_key="", base_url=DEFAULT_BASE_URL,
                  transport=None, temperature=0.0, max_tokens=4096, timeout=120,
                  max_history=6, observation_limit=1200,
+                 max_parse_attempts=2, max_dsml_retries=2,
                  input_price=0.0, output_price=0.0, log_path=None,
                  json_mode="auto", toolset=DEFAULT_TOOLSET, tools=None,
-                 budget_usd=None, max_total_tokens=None):
+                 workspace_hint=None, budget_usd=None, max_total_tokens=None):
         self.task = task
         self.model = model
         self.api_key = api_key
@@ -107,6 +114,14 @@ class LLMPolicy:
         self.timeout = timeout
         self.max_history = max_history
         self.observation_limit = observation_limit
+        if (not isinstance(max_parse_attempts, int) or isinstance(max_parse_attempts, bool)
+                or max_parse_attempts < 1):
+            raise ValueError("max_parse_attempts must be a positive integer")
+        if (not isinstance(max_dsml_retries, int) or isinstance(max_dsml_retries, bool)
+                or max_dsml_retries < 0):
+            raise ValueError("max_dsml_retries must be a non-negative integer")
+        self.max_parse_attempts = max_parse_attempts
+        self.max_dsml_retries = max_dsml_retries
         self.input_price = input_price
         self.output_price = output_price
         self.log_path = Path(log_path) if log_path else None
@@ -114,6 +129,7 @@ class LLMPolicy:
         self.json_supported = True
         self.toolset = toolset
         self.tools = validate_tool_names(tools) if tools is not None else tool_names(toolset)
+        self.workspace_hint = workspace_hint or DEFAULT_WORKSPACE_HINT
         self.prompt_version = PROMPT_VERSION
         self.calls = 0
         self.last_usage = None
@@ -171,7 +187,7 @@ class LLMPolicy:
             {"role": "system", "content": self.system_prompt()},
             {"role": "user", "content": (
                 f"任务：{self.task}\n\n"
-                "当前工作区：仓库根目录，包含 Python 源码与 tests/test_visible.py。\n\n"
+                f"{self.workspace_hint}\n\n"
                 f"到目前为止：\n{self._history_text(history)}"
             )},
         ]
@@ -241,13 +257,16 @@ class LLMPolicy:
             6,
         )
 
-    def _usage(self, prompt_tokens, completion_tokens, attempts, last_error):
+    def _usage(self, prompt_tokens, completion_tokens, attempts, last_error,
+               parse_attempts=0, dsml_retries=0):
         return {
             "model": self.model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "cost_usd": self._cost(prompt_tokens, completion_tokens),
             "attempts": attempts,
+            "parse_attempts": parse_attempts,
+            "dsml_retries": dsml_retries,
             "last_error": last_error,
             "extra_actions": self.last_extra_actions,
         }
@@ -293,27 +312,46 @@ class LLMPolicy:
         step = len(history) + 1
         messages = self._messages(history)
         prompt_tokens = completion_tokens = 0
-        attempts = 0
+        api_attempts = 0
+        parse_attempts = 0
+        dsml_retries = 0
         last_error = None
-        for attempt in range(2):
-            batch = messages if attempt == 0 else messages + [{
-                "role": "user",
-                "content": "上一条回复不是要求的 JSON。只输出一个 JSON 对象，"
-                           "不要输出任何其他字符：\n"
-                           '{"tool": "<动作名>", "args": {...}}',
+        last_kind = None
+        max_api_calls = self.max_parse_attempts + self.max_dsml_retries
+        retry_parse = (
+            "上一条回复不是要求的 JSON。只输出一个 JSON 对象，"
+            "不要输出任何其他字符：\n"
+            '{"tool": "<动作名>", "args": {...}}'
+        )
+        retry_dsml = (
+            "上一条包含 DSML/XML 工具标记，不是合法 JSON。"
+            "不要使用 DSML、XML 或 tool_calls；只输出一个 JSON 对象，"
+            "不要输出任何其他字符：\n"
+            '{"tool": "<动作名>", "args": {...}}'
+        )
+        while (parse_attempts < self.max_parse_attempts
+               and api_attempts < max_api_calls):
+            if last_kind == "dsml":
+                instruction = retry_dsml
+            elif last_kind == "parse":
+                instruction = retry_parse
+            else:
+                instruction = None
+            batch = messages if instruction is None else messages + [{
+                "role": "user", "content": instruction,
             }]
             self._reserve(batch)
             started = time.perf_counter()
             try:
                 reply = self._post(batch)
             except Exception as exc:
-                self._record(step, attempt + 1, batch, None,
+                self._record(step, api_attempts + 1, batch, None,
                              f"{type(exc).__name__}: {exc}",
                              round((time.perf_counter() - started) * 1000))
                 raise
             elapsed_ms = round((time.perf_counter() - started) * 1000)
             self.calls += 1
-            attempts += 1
+            api_attempts += 1
             usage = reply.get("usage") or {}
             prompt_tokens += int(usage.get("prompt_tokens", 0) or 0)
             completion_tokens += int(usage.get("completion_tokens", 0) or 0)
@@ -328,16 +366,28 @@ class LLMPolicy:
                 action = self._parse(reply)
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
-                self._record(step, attempts, batch, reply, last_error, elapsed_ms)
+                content = self._content(reply) or ""
+                if "DSML" in content and dsml_retries < self.max_dsml_retries:
+                    dsml_retries += 1
+                    last_kind = "dsml"
+                    self._record(step, api_attempts, batch, reply, last_error, elapsed_ms)
+                    continue
+                parse_attempts += 1
+                last_kind = "parse"
+                self._record(step, api_attempts, batch, reply, last_error, elapsed_ms)
                 continue
-            self._record(step, attempts, batch, reply, None, elapsed_ms)
+            self._record(step, api_attempts, batch, reply, None, elapsed_ms)
             self.last_usage = self._usage(prompt_tokens, completion_tokens,
-                                          attempts, last_error)
+                                          api_attempts, last_error,
+                                          parse_attempts, dsml_retries)
             return action
         # Keep the failed attempt visible even though no event will record it.
         self.last_usage = self._usage(prompt_tokens, completion_tokens,
-                                      attempts, last_error)
-        raise RuntimeError(f"模型连续两次返回无法解析的输出：{last_error}")
+                                      api_attempts, last_error,
+                                      parse_attempts, dsml_retries)
+        raise RuntimeError(
+            f"模型无法解析输出（parse_attempts={parse_attempts}, "
+            f"dsml_retries={dsml_retries}, api_attempts={api_attempts}）：{last_error}")
 
 
 def _first_env(*names, default=""):
@@ -349,7 +399,7 @@ def _first_env(*names, default=""):
 
 
 def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
-                    toolset=None, tools=None, **kwargs):
+                    toolset=None, tools=None, workspace_hint=None, **kwargs):
     """Build an LLMPolicy for any OpenAI-compatible endpoint.
 
     Environment (``.env`` or process):
@@ -369,6 +419,12 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
     resolved_model = model or _first_env("LLM_MODEL", "DEEPSEEK_MODEL")
     if not resolved_model:
         raise RuntimeError("缺少 LLM_MODEL：请在 .env 设置模型名或使用 --model。")
+    kwargs.setdefault(
+        "max_parse_attempts",
+        int(_first_env("LLM_MAX_PARSE_ATTEMPTS", default="2")))
+    kwargs.setdefault(
+        "max_dsml_retries",
+        int(_first_env("LLM_MAX_DSML_RETRIES", default="2")))
     return LLMPolicy(
         task=task,
         model=resolved_model,
@@ -381,5 +437,6 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
         json_mode=_first_env("LLM_JSON_MODE", default="auto").strip().lower(),
         toolset=toolset or _first_env("LLM_TOOLSET", default=DEFAULT_TOOLSET),
         tools=tools,
+        workspace_hint=workspace_hint,
         **kwargs,
     )

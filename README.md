@@ -59,7 +59,7 @@ python -m scripts.run_task --task toy --policy scripted \
 python -m scripts.run_task --task sphinx-7462 --policy reference
 ```
 
-`summary.json` 新增 `tools_enabled`，记录这次实际启用的工具清单。
+`summary.json` 新增 `tools_enabled`，记录这次实际启用的工具清单；`tool_versions` 记录每个启用工具的版本快照（初始皆为 `v0`）；`retry_policy` 记录解析/DSML 重试上限。
 
 **本机 Web 门户**（在浏览器里配置、一键开始、实时看每一步、跑完直接开 `report.html`）：
 
@@ -68,7 +68,7 @@ pip install -r requirements-web.txt   # 仅门户需要 fastapi/uvicorn；核心
 python -m web.server                  # 默认 http://127.0.0.1:8000
 ```
 
-左侧选样例 / 策略 / 模型并勾选工具（`finish` 固定、至少一个编辑工具），右侧实时显示步骤、日志、花费与结果链接，下方是历史 run 对照表。按 **开始** 前可跑 preflight 检查数据档、解释器与 API key。
+左侧选样例 / 策略 / 模型并勾选工具（`finish` 固定、至少一个编辑工具），右侧实时显示步骤、日志、花费与结果链接，下方是历史 run 对照表。历史 run 会写入 `runs/web/<id>/web-run.json`（另有 `web.log`），重启门户后仍会加载；表格显示每次使用的 prompt 版本与每个 tool 的版本，点击历史行可回看该次日志、步骤与报告。按 **开始** 前可跑 preflight 检查数据档、解释器与 API key。
 
 安全约束：只绑 `127.0.0.1`（会执行任意仓库代码）；API key 留在服务端由子程序读取，不下发浏览器；artifacts 只在该 run 目录内取档（拒绝 `..`）；默认同时只允许 1 个 run。
 

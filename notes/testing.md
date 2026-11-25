@@ -13,7 +13,7 @@ python -B -m unittest discover -s web/tests          # 调试门户（registry /
 
 前五组是 AGENTS.md 规定的核心套件，标准库即可运行。`web/tests` 覆盖 Web
 门户（`tasks/registry.py`、`scripts/run_task.py`、`web/server.py`）；其中
-server 测试需要 `fastapi`/`httpx`（见 `requirements-web.txt`），门户以外的代码
+server 测试需要 `fastapi`/`httpx2`（已列入 `requirements-web.txt`），门户以外的代码
 仍保持零依赖。
 
 ## 已知本机失败

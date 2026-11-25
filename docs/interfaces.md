@@ -30,7 +30,8 @@ trajectory 字段   ← agent.py（写）
 每次 run 的 `summary.json` 必须记录：
 
 ```json
-"versions": {"action": "v1", "tools": "v1", "prompt": "v1", "trajectory": "v1"}
+"versions": {"action": "v1", "tools": "v1", "prompt": "v7", "trajectory": "v1"},
+"prompt_version": "v7"
 ```
 
 规则：
@@ -173,7 +174,7 @@ TOOLSETS = {
 
 - toolset 只决定工具名；环境由 runner 选择（`local` / `docker`）。
 - 工具必须先出现在 `TOOL_SPECS`，否则 `get_toolset()` 直接拒绝。
-- 每次 run 的 `summary` 记录 `toolset` 与 `tools_enabled`。
+- 每次 run 的 `summary` 记录 `toolset`、`tools_enabled` 與 `tool_versions`（啟用工具的版本快照）。
 - 新增工具 = 加 spec、加 handler、把名字加进对应 toolset。
 
 ## 4. 两人协作规则
@@ -267,8 +268,10 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 
 ```json
 {"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
- "versions": {"action": "v1", "tools": "v1", "prompt": "v6", "trajectory": "v1"},
+ "versions": {"action": "v1", "tools": "v1", "prompt": "v7", "trajectory": "v1"},
  "toolset": "toy-v2", "tools_enabled": ["list_files", "..."],
+ "tool_versions": {"list_files": 0, "read_lines": 0, "finish": 0},
+ "retry_policy": {"max_parse_attempts": 2, "max_dsml_retries": 2},
  "status": "...", "stop_reason": "...", "steps": 17,
  "model_calls": 0, "tokens": {"prompt": 0, "completion": 0}, "cost_usd": 0.0,
  "elapsed_seconds": 0.0, "test_calls": 3,
@@ -360,7 +363,8 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-17 | v1 | 新增 toolset 层：`tools/toolsets.py` 决定每次 run 可用的工具与 backend；`prompt` 升 v3（工具表由 toolset 生成）；`summary` 增加 `toolset` / `tools_enabled` | 兼容（新增字段） |
 | 2026-11-22 | v1 | `prompt` 升 v4：toy 改用 `toy-v2` 工具表（`list_files`/`read_lines`/`apply_patch`/`run_visible_tests`/`finish`），提示词范例与规则同步；toolset 移除 `backend` 字段 | 兼容（版本值与 toolset 名称变化） |
 | 2026-11-23 | v1 | `prompt` 升 v5：toy-v2 改用 `replace_text`（`apply_patch` 只留 repo/Sphinx）；提示词依 toolset 给对应编辑范例；`apply_patch`/`replace_text` 之外的工具面不变 | 兼容（版本值与 toy 工具集变化） |
-| 2026-11-25 | v1 | `prompt` 升 v6：改为精简的纯 JSON 动作清单，不再使用「可用工具/调用」措辞与反面范例；重试反馈只要求一行 JSON；`run.py` 在 prepare/agent/finalize/evaluate 失败时也写 summary | 兼容（版本值与失败记录字段） |
+| 2026-11-25 | v1 | `prompt` 升 v7：移除 `tests/test_visible.py` 的任務耦合，改為通用 workspace hint（先 list_files/search_text 找測試）；`summary` 增加 `prompt_version`，web 歷史記錄保存並顯示 | 兼容（新增欄位；prompt 行為改變） |
+| 2026-11-25 | v1 | 解析重試可配置：`max_parse_attempts` / `max_dsml_retries`；DSML 失敗不佔正常解析次數，但仍計入 API/token/cost；`summary` 增加 `retry_policy` | 兼容（新增設定與欄位） |
 | 2026-11-25 | v1 | 新增 canonical evaluation envelope：`resolved`／`status`／`execution_valid`／`metrics`／`new_regressions`／`errors`／`cases`／`details`；toy 与 Sphinx 各自映射，报告不再依赖任务专属字段 | 评测消费者需改读 `metrics`；旧结果仍在 `details` |
 
 ## 10. 常见事故（本文件要防的东西）

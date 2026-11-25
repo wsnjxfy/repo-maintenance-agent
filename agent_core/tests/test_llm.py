@@ -212,6 +212,19 @@ class TestLLMPolicy(unittest.TestCase):
         self.assertIn('"tool": "apply_patch", "args"', prompt)
         self.assertNotIn('"tool": "replace_text"', prompt)
 
+    def test_default_workspace_hint_is_generic(self):
+        content = LLMPolicy(task="t", model="m")._messages([])[1]["content"]
+        self.assertNotIn("tests/test_visible.py", content)
+        self.assertIn("list_files", content)
+        self.assertIn("search_text", content)
+        self.assertIn("不要假设", content)
+
+    def test_workspace_hint_can_be_overridden(self):
+        content = LLMPolicy(task="t", model="m",
+                            workspace_hint="CUSTOM_HINT")._messages([])[1]["content"]
+        self.assertIn("CUSTOM_HINT", content)
+        self.assertNotIn("list_files 查看 tests/", content)
+
     def test_retry_feedback_asks_for_plain_json_without_parser_details(self):
         sent = []
         replies = iter([self.reply("｜｜DSML｜｜ not json"),
@@ -226,6 +239,43 @@ class TestLLMPolicy(unittest.TestCase):
         self.assertIn("只输出一个 JSON 对象", feedback)
         self.assertNotIn("KeyError", feedback)
         self.assertNotIn("JSONDecodeError", feedback)
+
+    def test_dsml_retry_does_not_consume_parse_attempts(self):
+        dsml = "｜｜DSML｜｜ not json"
+        replies = iter([self.reply(dsml), self.reply(dsml),
+                        self.reply('{"tool": "finish", "args": {}}')])
+        policy = LLMPolicy(task="t", model="m", transport=lambda payload: next(replies),
+                           max_parse_attempts=2, max_dsml_retries=2)
+        self.assertEqual(policy.next_action([]).tool, "finish")
+        self.assertEqual(policy.calls, 3)
+        self.assertEqual(policy.last_usage["attempts"], 3)
+        self.assertEqual(policy.last_usage["parse_attempts"], 0)
+        self.assertEqual(policy.last_usage["dsml_retries"], 2)
+
+    def test_dsml_retry_is_capped(self):
+        dsml = "｜｜DSML｜｜ not json"
+        policy = LLMPolicy(task="t", model="m",
+                           transport=lambda payload: self.reply(dsml),
+                           max_parse_attempts=2, max_dsml_retries=1)
+        with self.assertRaises(RuntimeError):
+            policy.next_action([])
+        self.assertEqual(policy.calls, 3)
+        self.assertEqual(policy.last_usage["parse_attempts"], 2)
+        self.assertEqual(policy.last_usage["dsml_retries"], 1)
+
+    def test_parse_attempts_are_configurable(self):
+        policy = LLMPolicy(task="t", model="m",
+                           transport=lambda payload: self.reply("not json"),
+                           max_parse_attempts=1, max_dsml_retries=0)
+        with self.assertRaises(RuntimeError):
+            policy.next_action([])
+        self.assertEqual(policy.calls, 1)
+
+    def test_invalid_retry_config_is_rejected(self):
+        with self.assertRaises(ValueError):
+            LLMPolicy(task="t", model="m", max_parse_attempts=0)
+        with self.assertRaises(ValueError):
+            LLMPolicy(task="t", model="m", max_dsml_retries=-1)
 
     def test_env_loader_does_not_override_existing_values(self):
         saved = {name: os.environ.get(name)

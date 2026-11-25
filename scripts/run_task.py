@@ -71,10 +71,17 @@ def _build_policy(args, entry, task, names):
 
     # llm: build lazily so llm_calls.jsonl lands inside the run directory.
     def factory(run_dir, task):
+        retry_kwargs = {}
+        if args.max_parse_attempts is not None:
+            retry_kwargs["max_parse_attempts"] = args.max_parse_attempts
+        if args.max_dsml_retries is not None:
+            retry_kwargs["max_dsml_retries"] = args.max_dsml_retries
         return policy_from_env(
             task.problem, args.model, toolset=task.toolset, tools=names,
+            workspace_hint=getattr(task, "workspace_hint", None),
             log_path=None if args.no_llm_log else Path(run_dir) / "llm_calls.jsonl",
-            budget_usd=args.budget_usd, max_total_tokens=args.max_total_tokens)
+            budget_usd=args.budget_usd, max_total_tokens=args.max_total_tokens,
+            **retry_kwargs)
 
     return None, factory
 
@@ -88,6 +95,8 @@ def main(argv=None):
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--max-total-tokens", type=int)
+    parser.add_argument("--max-parse-attempts", type=int)
+    parser.add_argument("--max-dsml-retries", type=int)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--no-llm-log", action="store_true")
     # Sphinx (and future data-backed tasks) path/interpreter overrides.

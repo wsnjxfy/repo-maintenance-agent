@@ -4,3 +4,6 @@
 #     pip install -r requirements-web.txt
 fastapi>=0.110
 uvicorn>=0.23
+
+# TestClient for web/tests (test-only, but harmless for the portal).
+httpx2>=2.16

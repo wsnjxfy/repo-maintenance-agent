@@ -31,6 +31,9 @@ class ToyV2DemoTests(unittest.TestCase):
         self.assertEqual(metrics["pass_to_pass"]["passed"], 3)
         self.assertEqual(self.summary["toolset"], "toy-v2")
         self.assertEqual(self.summary["env"], "local")
+        self.assertEqual(set(self.summary["tool_versions"]),
+                         set(self.summary["tools_enabled"]))
+        self.assertTrue(all(v == 0 for v in self.summary["tool_versions"].values()))
 
     def test_artifacts_exist(self):
         for name in ("summary.json", "trajectory.jsonl", "report.html", "final.patch"):

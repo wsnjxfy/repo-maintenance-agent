@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -120,7 +121,29 @@ def _preflight_toy(options):
 # --- sphinx-7462 ------------------------------------------------------------
 
 DEFAULT_SPHINX_DATA = REPO_ROOT / "data" / "sphinx-doc__sphinx-7462"
-DEFAULT_VENV_PYTHON = REPO_ROOT / ".venv39" / "bin" / "python"
+
+
+def _venv_python(base):
+    return Path(base) / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def _default_venv_python():
+    override = os.environ.get("SPHINX_PYTHON")
+    if override:
+        return Path(override)
+    candidates = [
+        REPO_ROOT / "experiments" / "sphinx_7462" / ".venv39",
+        REPO_ROOT / ".venv39",
+    ]
+    for base in candidates:
+        candidate = _venv_python(base)
+        if candidate.is_file():
+            return candidate
+    # Keep a deterministic missing path so preflight shows a useful red badge.
+    return _venv_python(candidates[0])
+
+
+DEFAULT_VENV_PYTHON = _default_venv_python()
 
 
 def _sphinx_paths(options):

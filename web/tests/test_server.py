@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fastapi.testclient import TestClient
 
+from agent_core.llm import PROMPT_VERSION
 from web import server
 
 
@@ -68,6 +69,15 @@ class RunValidationTests(unittest.TestCase):
         body = r.json()
         self.assertIn("finish", body["config"]["tools"])
         self.assertIn("replace_text", body["config"]["tools"])
+        self.assertEqual(set(body["config"]["tool_versions"]),
+                         set(body["config"]["tools"]))
+
+    def test_llm_request_records_prompt_version(self):
+        with mock.patch.object(server, "_launch", _no_launch):
+            r = self.client.post("/api/runs", json={
+                "task": "toy", "policy": "llm", "tools": ["replace_text"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["config"]["prompt_version"], PROMPT_VERSION)
 
     def test_concurrency_cap(self):
         with mock.patch.object(server, "_launch", lambda rec, cfg: None):

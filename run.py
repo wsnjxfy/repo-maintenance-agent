@@ -25,7 +25,7 @@ from agent_core.report import write_report
 from runtime.local import LocalEnvironment
 from runtime.session import Session
 from tools.specs import TOOL_SPECS
-from tools.toolsets import tool_labels_for, tool_names, validate_tool_names
+from tools.toolsets import tool_labels_for, tool_names, tool_versions, validate_tool_names
 
 
 class Task(Protocol):
@@ -97,6 +97,7 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
 
     requested_names = list(tools) if tools is not None else None
     names = []
+    tool_versions_map = {}
     history = []
     status, reason = "incomplete", "run did not start"
     stage = "policy"
@@ -111,6 +112,8 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
         if requested_names is None:
             requested_names = tool_names(task.toolset)
         names = list(requested_names)
+        names = validate_tool_names(names)
+        tool_versions_map = tool_versions(names)
         if policy_factory is not None:
             policy = policy_factory(run_dir, task)
         if policy is None:
@@ -125,7 +128,6 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
                                python=getattr(task, "python", None),
                                git=getattr(task, "git", "git"),
                                scratch=run_dir / "scratch")
-        names = validate_tool_names(requested_names)
         specs = {name: TOOL_SPECS[name] for name in names}
         session = Session(env, run_dir / "controller", task.protocol, specs, set(specs),
                           initial_manifest=env.manifest())
@@ -190,8 +192,14 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
             "prompt": getattr(policy, "prompt_version", "v1"),
             "trajectory": "v1",
         },
+        "prompt_version": getattr(policy, "prompt_version", None),
+        "retry_policy": ({
+            "max_parse_attempts": getattr(policy, "max_parse_attempts", None),
+            "max_dsml_retries": getattr(policy, "max_dsml_retries", None),
+        } if hasattr(policy, "max_parse_attempts") else None),
         "toolset": getattr(task, "toolset", ""),
         "tools_enabled": names,
+        "tool_versions": tool_versions_map,
         "env": "local",
         "visibility": _visibility_summary(task),
         "model": getattr(policy, "model", "scripted_teaching"),

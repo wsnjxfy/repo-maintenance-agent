@@ -97,3 +97,5 @@ table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0
 th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 500; }
 td a { color: var(--accent); }
+.history-row { cursor: pointer; }
+.tool-versions { font-size: 0.72rem; max-width: 360px; white-space: normal; }
