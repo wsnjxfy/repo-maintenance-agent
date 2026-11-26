@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 let CATALOG = null;
 let CURRENT = null;      // active run id
 let SOURCE = null;       // EventSource
+let TOOL_SELECTIONS = {}; // toolset name -> Set of enabled tools
 
 async function getJSON(url) {
   const r = await fetch(url);
@@ -25,24 +26,54 @@ function taskEntry(id) {
   return CATALOG.tasks.find((t) => t.task_id === id);
 }
 
-function renderTools(entry) {
+function showTab(name) {
+  for (const btn of document.querySelectorAll(".tabs .tab")) {
+    btn.classList.toggle("active", btn.dataset.tab === name);
+  }
+  for (const panel of document.querySelectorAll(".tab-panel")) {
+    panel.classList.toggle("active", panel.id === "tab-" + name);
+  }
+  if (name === "history") loadHistory();
+}
+
+function toolsetEntry(name) {
+  return (CATALOG.toolsets || []).find((entry) => entry.name === name);
+}
+
+function renderTools(toolsetName) {
   const box = $("tools");
   box.innerHTML = "";
-  const enabled = new Set(entry.default_tools);
-  for (const tool of CATALOG.tools) {
+  const entry = toolsetEntry(toolsetName);
+  const names = entry ? entry.tools : [];
+  if (!TOOL_SELECTIONS[toolsetName]) {
+    TOOL_SELECTIONS[toolsetName] = new Set(names);
+  }
+  const enabled = TOOL_SELECTIONS[toolsetName];
+  const byName = new Map(CATALOG.tools.map((tool) => [tool.name, tool]));
+  for (const name of names) {
+    const tool = byName.get(name);
+    if (!tool) continue;
     const row = document.createElement("label");
     row.className = "tool-row";
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.value = tool.name;
     cb.checked = enabled.has(tool.name) || tool.required;
-    if (tool.required) { cb.checked = true; cb.disabled = true; row.classList.add("disabled"); }
-    cb.addEventListener("change", validateSelection);
+    if (tool.required) {
+      cb.checked = true;
+      cb.disabled = true;
+      row.classList.add("disabled");
+    }
+    cb.addEventListener("change", () => {
+      if (cb.checked) enabled.add(tool.name);
+      else enabled.delete(tool.name);
+      validateSelection();
+    });
 
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = tool.name;
-    row.append(cb, name);
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "name";
+    nameSpan.textContent = tool.name;
+    row.append(cb, nameSpan);
 
     const tags = [];
     if (tool.is_edit) tags.push("编辑");
@@ -73,7 +104,7 @@ function validateSelection() {
   const hasEdit = CATALOG.edit_tools.some((t) => tools.includes(t));
   const err = $("error");
   if (!hasEdit) {
-    err.textContent = "至少勾选一个编辑工具（replace_text 或 apply_patch）。";
+    err.textContent = `至少勾选一个编辑工具（${CATALOG.edit_tools.join("、")}）。`;
     $("start").disabled = true;
   } else {
     err.textContent = "";
@@ -94,7 +125,13 @@ function onTaskChange() {
   const entry = taskEntry($("task").value);
   $("task-notes").textContent = entry.notes || "";
   fillPolicies(entry);
-  renderTools(entry);
+  const toolset = $("toolset");
+  const hasTaskToolset = (CATALOG.toolsets || []).some((t) => t.name === entry.toolset);
+  if (hasTaskToolset) toolset.value = entry.toolset;
+  else if (!toolset.value && (CATALOG.toolsets || []).length) {
+    toolset.value = CATALOG.toolsets[0].name;
+  }
+  renderTools(toolset.value);
   $("preflight-list").innerHTML = "";
 }
 
@@ -142,7 +179,7 @@ function renderStatus(summary) {
   const t = summary.tokens ? `${summary.tokens.prompt}+${summary.tokens.completion}` : "—";
   bar.innerHTML =
     `<span>步数 <b>${summary.steps ?? "—"}</b></span>` +
-    `<span>actions <b>${summary.actions ?? "—"}</b></span>` +
+    `<span>actions <b>${summary.actions ?? "—"}${summary.max_actions != null ? " / " + summary.max_actions : ""}</b></span>` +
     `<span>tokens <b>${t}</b></span>` +
     `<span>花费 <b>$${summary.cost_usd ?? 0}</b></span>` +
     `<span>status <b>${summary.status ?? "—"}</b></span>`;
@@ -211,10 +248,12 @@ async function start() {
   const entry = taskEntry($("task").value);
   const body = {
     task: $("task").value,
+    toolset: $("toolset").value,
     policy: $("policy").value,
     tools: selectedTools(),
     model: $("model").value || null,
     max_steps: parseInt($("max-steps").value, 10) || null,
+    max_actions: parseInt($("max-actions").value, 10) || 60,
     budget_usd: parseFloat($("budget").value) || null,
   };
   $("error").textContent = "";
@@ -223,6 +262,7 @@ async function start() {
     CURRENT = id;
     $("start").disabled = true;
     $("cancel").disabled = false;
+    showTab("run");
     startStream(id);
   } catch (e) {
     $("error").textContent = e.message;
@@ -250,6 +290,7 @@ async function loadHistory() {
       const versionText = Object.entries(versions)
         .map(([name, version]) => `${name} v${version}`).join(" · ") || "—";
       tr.innerHTML = `<td>${time}</td><td>${r.config.task}</td><td>${r.config.policy}</td>` +
+        `<td>${r.agent_version || "—"}</td>` +
         `<td>${r.prompt_version || "—"}</td>` +
         `<td class="muted">${r.config.tools.length} 个</td>` +
         `<td class="tool-versions" title="${versionText}">${versionText}</td>` +
@@ -269,6 +310,7 @@ function openHistoryRun(runId) {
   CURRENT = runId;
   $("start").disabled = true;
   $("cancel").disabled = true;
+  showTab("run");
   startStream(runId);
 }
 
@@ -280,12 +322,23 @@ async function init() {
     o.value = t.task_id; o.textContent = t.title; sel.append(o);
   }
   sel.addEventListener("change", onTaskChange);
+  const toolsetSel = $("toolset");
+  for (const ts of CATALOG.toolsets || []) {
+    const o = document.createElement("option");
+    o.value = ts.name; o.textContent = ts.name; toolsetSel.append(o);
+  }
+  toolsetSel.addEventListener("change", () => {
+    renderTools(toolsetSel.value);
+    $("preflight-list").innerHTML = "";
+  });
   $("policy").addEventListener("change", () => { $("preflight-list").innerHTML = ""; });
   $("preflight-btn").addEventListener("click", runPreflight);
   $("start").addEventListener("click", start);
   $("cancel").addEventListener("click", cancel);
+  for (const btn of document.querySelectorAll(".tabs .tab")) {
+    btn.addEventListener("click", () => showTab(btn.dataset.tab));
+  }
   onTaskChange();
-  loadHistory();
 }
 
 init().catch((e) => { $("error").textContent = e.message; });

@@ -12,7 +12,7 @@ from agent_core.agent import Action
 from agent_core.llm import policy_from_env
 from experiments.sphinx_7462.oracle import ReferencePatchPolicy
 from experiments.sphinx_7462.task import SphinxTask
-from run import run
+from run import DEFAULT_MAX_ACTIONS, run
 
 
 class EmptyPolicy:
@@ -45,6 +45,7 @@ def main(argv=None):
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--max-total-tokens", type=int)
     parser.add_argument("--max-steps", type=int, default=30)
+    parser.add_argument("--max-actions", type=int, default=DEFAULT_MAX_ACTIONS)
     parser.add_argument("--output-dir", type=Path, default=Path("runs"))
     parser.add_argument("--no-llm-log", action="store_true")
     parser.add_argument("--skip-env-probe", action="store_true",
@@ -72,7 +73,8 @@ def main(argv=None):
 
     try:
         summary, _, _ = run(task, policy, policy_factory=factory,
-                            output_root=args.output_dir, max_steps=args.max_steps)
+                            output_root=args.output_dir, max_steps=args.max_steps,
+                            max_actions=args.max_actions)
     except (RuntimeError, ValueError) as exc:
         parser.error(str(exc))
     return 0 if summary["resolved"] else 1

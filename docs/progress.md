@@ -313,3 +313,42 @@
 - `runtime/session._write_json` 加 `default=str` 作防禦；新增 `runtime/tests/test_path_serialization.py`。
 - 測試：`agent_core` 37、`tools` 14、`runtime` 21、`mvp` 12、`experiments` 37、`web` 17，全綠。
 
+## 2026-11-26 ｜ max_actions 成為可調參數
+
+- 原因：`max_steps=60` 只放寬 Agent 決策步數；Sphinx protocol 的 `max_actions=30` 仍提早觸發 `Workspace action limit reached`。
+- `run.py`：新增 `max_actions` 參數（`DEFAULT_MAX_ACTIONS=60`），複製並覆寫 `task.protocol` 後交給 `Session`；summary 記錄實際生效的 `max_actions`。
+- `scripts/run_task.py`、`experiments/sphinx_7462/runner.py`、`mvp/demo.py` 新增 `--max-actions`（預設 60）。
+- Web：`RunRequest.max_actions` 預設 60；進階表單新增 `max actions` 欄位；狀態列顯示 `actions / max_actions`；`web-run.json` 與歷史 run 記錄此設定。
+- 驗證：toy CLI 預設 `max_actions=60` 正常完成；`--max-actions 5` 在 actions=5、steps=6 時以 `Workspace action limit reached` 停止；全套件綠。
+
+## 2026-11-26 ｜ context 持久摘要、loop guard 與 agent version
+
+- 背景：Sphinx LLM run 花 20 分鐘、讀同一檔案 92 次；`LLMPolicy` 只保留最近 6 步、每步 observation 截到 1200 字元，模型早先的修改/測試/搜尋線索會消失。
+- `agent_core/llm.py`：prompt v8。新增由完整 history 生成的持久摘要（已讀檔案與範圍、已修改、已跑測試、搜尋、搜尋發現但未讀的檔案），以及重複讀取/久未修改警告。
+- `read_lines` observation 改成保留可顯示行並標記 `shown_until` / `omitted` / 續讀起點；測試 observation 保留 status/counts 與 stdout tail，不再被 JSON 截斷吃掉狀態。
+- `max_history`、`observation_limit`、`notes_limit`、`read_repeat_warning`、`stale_edit_steps` 可由 `LLM_*` 環境變數調整；summary 記錄 `context_policy`。
+- `agent_core.AGENT_VERSION = "v1"`；`summary.versions.agent`、`summary.agent_version` 記錄，Web 歷史表新增 agent 欄位，舊 run 顯示 `—`。
+- 驗證：用上次失敗 run 的完整 history 重算摘要，會顯示 `sphinx/pycode/ast.py` 為「搜索發現但尚未讀取」並警告 `sphinx/domains/python.py` 已讀 91 次；toy scripted 與 LLM 測試通過；全套件綠。
+
+## 2026-11-26 ｜ show_diff 明確標示 staging 行為
+
+- 採用方案 B：保留 `show_diff` 的 `git add -A`（用來把新檔案納入 diff），不再假裝它是唯讀。
+- `tools/specs.py`：`show_diff` 的 `doc` 明確寫出會 stage 變更；`mutating` 由 `False` 改為 `True`；版本由 0 升到 1。
+- `tools/handlers.py`：handler docstring 說明 staging 副作用；`changed_files` 改用 `git diff --cached --name-only -z HEAD`，補上刪除檔與含空白路徑。
+- 測試：新增 `show_diff` staging 與刪除檔回歸測試，以及 spec 描述／`mutating` 的 catalog 測試；全部套件綠。
+
+## 2026-11-26 ｜ Web 先選 toolset，再勾工具；新編輯工具接入
+
+- `web/server.py`：`EDIT_TOOLS` 加入 `create_file`、`edit_lines`；`RunRequest` 新增 `toolset`；`/api/catalog` 回傳 `toolsets`（名稱＋工具清單）；`_normalize_tools` 驗證工具必須屬於所選 toolset，並依 toolset 提供全量工具。
+- `scripts/run_task.py`：新增 `--toolset`；未給 `--tools` 時使用該 toolset 全部工具；給 `--tools` 時驗證其為 toolset 子集；summary 記錄實際 toolset。
+- `tasks/registry.py`：`TaskEntry.edit_tools` 同步加入新編輯工具。
+- Web UI：配置區新增 toolset 下拉選單；切換後只顯示該 toolset 的工具，預設全選，finish 固定必選；各 toolset 的勾選狀態會保留；請求會帶 `toolset`。
+- 驗證：API 測試涵蓋未知 toolset、工具不在 toolset、只用新編輯工具、未指定 tools 時使用 toolset 全量；headless Chrome 確認 `repo-v2` 切換後顯示 14 個工具；全套件綠。
+
+## 2026-11-26 ｜ 修 edit_lines 結尾換行、case_sensitive 驗證、移除 dead specs
+
+- `edit_lines`：修正原始檔沒有結尾換行時，`new` 結尾的換行被 `splitlines()` 吃掉；現在會在編輯到最後一行時尊重 `new` 的結尾換行，同時保留原檔的換行慣例。
+- `search_text` / `search_regex`：`case_sensitive` 現在必須是 bool；傳字串（例如 `"false"`）會回 tool error，不再被 truthy 當成 `True`。`search_text` 因此升到 v1。
+- `TOOL_SPECS`：移除沒有 handler 的 `read_file`、`plan`、`run_tests`，同步移除 `agent_core.llm.PHASE_BY_TOOL` 的殘留條目與 catalog 測試。
+- 測試：新增 `edit_lines` 無結尾換行回歸測試、`case_sensitive` 型別測試；tools 34 tests 綠，全套件綠。
+

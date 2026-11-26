@@ -7,6 +7,9 @@ import time
 from typing import Protocol
 
 
+AGENT_VERSION = "v1"
+
+
 class PolicyBudgetExceeded(RuntimeError):
     """Raised by a policy when its model/token budget would be exceeded."""
 

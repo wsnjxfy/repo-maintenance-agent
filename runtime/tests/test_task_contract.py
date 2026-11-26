@@ -25,6 +25,16 @@ class StopPolicy:
         return None
 
 
+class ReadThenFinishPolicy:
+    def __init__(self, reads=4):
+        self.reads = reads
+
+    def next_action(self, history):
+        if len(history) < self.reads:
+            return Action("list_files", {"path": "."})
+        return Action("finish", {"reason": "done"})
+
+
 @dataclass
 class FakeTask:
     workspace: Path
@@ -99,6 +109,23 @@ class TaskContractTests(unittest.TestCase):
         self.assertEqual(summary["final_patch"], "final.patch")
         self.assertTrue((run_dir / "final.patch").exists())
         self.assertIsNotNone(task.calls[0][2])
+
+    def test_max_actions_override_allows_more_actions(self):
+        task = self.task()
+        summary, _, _ = run(task, ReadThenFinishPolicy(4),
+                            output_root=self.root / "runs", max_steps=6,
+                            max_actions=7)
+        self.assertEqual(summary["status"], "completed")
+        self.assertEqual(summary["max_actions"], 7)
+        self.assertEqual(summary["actions"], 4)
+
+    def test_task_protocol_max_actions_still_applies_by_default(self):
+        task = self.task()
+        summary, _, _ = run(task, ReadThenFinishPolicy(4),
+                            output_root=self.root / "runs", max_steps=6)
+        self.assertEqual(summary["status"], "budget_exhausted")
+        self.assertEqual(summary["max_actions"], 3)
+        self.assertEqual(summary["actions"], 3)
 
     def test_evaluation_failure_still_writes_summary_and_patch(self):
         task = self.task(FailingEvaluateTask)

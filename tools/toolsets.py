@@ -29,6 +29,27 @@ TOOLSETS = {
             "finish",
         ),
     },
+    "repo-v2": {
+        # repo-v1 plus navigation (regex / AST map / symbol lookup), finer edits
+        # (create_file / edit_lines), recovery (revert_file) and self-review
+        # (show_diff). A richer surface for comparing agent designs.
+        "tools": (
+            "list_files",
+            "search_text",
+            "search_regex",
+            "read_lines",
+            "map_repository",
+            "find_symbol",
+            "apply_patch",
+            "replace_text",
+            "create_file",
+            "edit_lines",
+            "revert_file",
+            "show_diff",
+            "run_visible_tests",
+            "finish",
+        ),
+    },
 }
 
 DEFAULT_TOOLSET = "toy-v2"

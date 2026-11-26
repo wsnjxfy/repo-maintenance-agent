@@ -77,6 +77,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .preflight li .dot { width: 0.8rem; }
 .ok { color: var(--ok); } .bad { color: var(--bad); }
 .error { color: var(--bad); min-height: 1.2em; }
+.tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; }
+.tabs .tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0; color: var(--muted); font-size: 0.95rem; font-weight: 600;
+  padding: 0.5rem 0.9rem; cursor: pointer;
+}
+.tabs .tab:hover { color: var(--fg); }
+.tabs .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
 .status-bar { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; margin-bottom: 0.6rem; }
 .status-bar span b { color: var(--fg); }
 .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }

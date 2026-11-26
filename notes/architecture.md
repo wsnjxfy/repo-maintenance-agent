@@ -29,10 +29,14 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
 ## 当前状态（2026-11-24）
 
 - toy 已切到 `run.py + ToyTask + LocalEnvironment + Session + handlers`；
-- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v7，toy-v2 用
-  `replace_text`；
+- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v8，toy-v2 用
+  `replace_text`；LLM prompt 現含由完整歷史生成的持久摘要（已讀/已改/已測/
+  搜索發現未讀）與重複讀取警告，最近窗口與 observation 上限可用 `LLM_*` 調整；
+- `agent_core.AGENT_VERSION`（目前 `v1`）記錄在 summary 與 web 歷史；
 - `run.py` 的 Task 接口已支持 `python` / `git`、`evaluate(run_dir, workspace, patch)`
   与 `Session.finalize()`；
+- 預算分兩層：`max_steps` 是 Agent 決策次數，`max_actions` 是 Session 的非
+  `finish` 動作次數（預設 60，`run.py`/CLI/web 可覆寫）；`finish` 不佔動作額度；
 - `experiments/sphinx_7462/task.py`（`SphinxTask`）已建立；真实
   `prepare`（Python 3.9.20）通过，空补丁 0/2、reference 2/2、回归 49/49；
 - `experiments/sphinx_7462/runner.py` 已用 `run.py + SphinxTask` 跑通

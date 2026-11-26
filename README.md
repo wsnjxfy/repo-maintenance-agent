@@ -37,11 +37,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-demo.ps1 -OpenReport
 | `--policy` | `scripted` | `scripted`（教学脚本）或 `llm`（真实模型） |
 | `--model NAME` | `.env` 的 `LLM_MODEL` | 仅 `--policy llm` 使用 |
 | `--max-steps N` | 16 | 决策步数上限；耗尽 → `budget_exhausted`，退出码 1 |
+| `--max-actions N` | 60 | 工作区动作上限（不含 `finish`）；耗尽 → `budget_exhausted` |
 | `--output-dir PATH` | `mvp/runs` | run 目录的父层（仍会建唯一子目录） |
 | `--open` | 关 | 跑完用浏览器打开 `report.html` |
 | `--no-llm-log` | 关 | 不写 `llm_calls.jsonl`（仅模型模式） |
 
 默认脚本策略不调用模型；退出码 0 表示 `completed` 且独立评测通过。完整说明以 `python -B mvp/run_demo.py --help` 为准。
+
+`--max-steps` 限制决策次数，`--max-actions` 限制非 `finish` 的工作区动作次数；两个预算独立，`finish` 不占动作额度。CLI 与 Web 的默认动作预算是 **60**。
 
 ## 通用启动 CLI 与 Web 门户
 
@@ -68,7 +71,9 @@ pip install -r requirements-web.txt   # 仅门户需要 fastapi/uvicorn；核心
 python -m web.server                  # 默认 http://127.0.0.1:8000
 ```
 
-左侧选样例 / 策略 / 模型并勾选工具（`finish` 固定、至少一个编辑工具），右侧实时显示步骤、日志、花费与结果链接，下方是历史 run 对照表。历史 run 会写入 `runs/web/<id>/web-run.json`（另有 `web.log`），重启门户后仍会加载；表格显示每次使用的 prompt 版本与每个 tool 的版本，点击历史行可回看该次日志、步骤与报告。按 **开始** 前可跑 preflight 检查数据档、解释器与 API key。
+左侧选样例 / 策略 / 模型，先选 toolset 再勾选该 toolset 内要提供给模型的工具；进阶设置可调整 `max steps` 与 `max actions`（默认 60）（`finish` 固定、至少一个编辑工具），右侧实时显示步骤、日志、花费与结果链接，下方是历史 run 对照表。历史 run 会写入 `runs/web/<id>/web-run.json`（另有 `web.log`），重启门户后仍会加载；表格显示每次使用的 agent、prompt 与每个 tool 的版本，点击历史行可回看该次日志、步骤与报告。按 **开始** 前可跑 preflight 检查数据档、解释器与 API key。
+
+上下文管理（持久运行摘要、最近窗口、loop guard）可用 `.env` 的 `LLM_MAX_HISTORY`、`LLM_OBSERVATION_LIMIT`、`LLM_NOTES_LIMIT`、`LLM_READ_REPEAT_WARNING`、`LLM_STALE_EDIT_STEPS` 调整；默认值见 `.env.example`。
 
 安全约束：只绑 `127.0.0.1`（会执行任意仓库代码）；API key 留在服务端由子程序读取，不下发浏览器；artifacts 只在该 run 目录内取档（拒绝 `..`）；默认同时只允许 1 个 run。
 

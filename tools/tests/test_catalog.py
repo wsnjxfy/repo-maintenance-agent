@@ -31,14 +31,23 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             get_toolset("does-not-exist")
 
-    def test_available_tools_excludes_handlerless_specs(self):
+    def test_handlerless_legacy_specs_are_removed(self):
         available = available_tools()
         self.assertEqual(set(available), {name for name, spec in TOOL_SPECS.items()
                                           if spec["handler"] in HANDLERS})
-        # Historical specs without a handler must not be dispatchable.
-        for dead in ("map_repository", "find_symbol", "read_file", "plan", "run_tests"):
-            self.assertIn(dead, TOOL_SPECS)
+        for dead in ("read_file", "plan", "run_tests"):
+            self.assertNotIn(dead, TOOL_SPECS)
             self.assertNotIn(dead, available)
+        # The newly implemented tools are dispatchable.
+        for live in ("map_repository", "find_symbol", "search_regex",
+                     "create_file", "edit_lines", "revert_file", "show_diff"):
+            self.assertIn(live, available)
+
+    def test_show_diff_documents_its_staging_side_effect(self):
+        spec = TOOL_SPECS["show_diff"]
+        self.assertTrue(spec["mutating"])
+        self.assertIn("git add", spec["doc"])
+        self.assertIn("stage", spec["doc"])
 
     def test_validate_tool_names_gates_the_subset(self):
         subset = ["list_files", "finish"]
@@ -49,8 +58,6 @@ class CatalogTests(unittest.TestCase):
             validate_tool_names(["finish", "finish"])
         with self.assertRaises(ValueError):
             validate_tool_names(["does_not_exist"])
-        with self.assertRaises(ValueError):  # exists in specs but has no handler
-            validate_tool_names(["plan"])
 
     def test_list_based_rendering_matches_toolset_rendering(self):
         names = tool_names("repo-v1")

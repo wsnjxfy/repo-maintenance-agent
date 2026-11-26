@@ -44,7 +44,7 @@ python -B -m experiments.sphinx_7462.evaluate `
 
 ## 统一 runner
 
-`run.py + SphinxTask` 的三条路径：
+`run.py + SphinxTask` 的三条路径。`--max-steps` 控制决策次数，`--max-actions` 控制非 `finish` 的工作区动作次数（默认 60）；两者独立。
 
 ```powershell
 # reference：2/2、49/49

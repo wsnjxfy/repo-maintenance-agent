@@ -30,8 +30,9 @@ trajectory 字段   ← agent.py（写）
 每次 run 的 `summary.json` 必须记录：
 
 ```json
-"versions": {"action": "v1", "tools": "v1", "prompt": "v7", "trajectory": "v1"},
-"prompt_version": "v7"
+"versions": {"agent": "v1", "action": "v1", "tools": "v1", "prompt": "v8", "trajectory": "v1"},
+"agent_version": "v1",
+"prompt_version": "v8"
 ```
 
 规则：
@@ -268,9 +269,14 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 
 ```json
 {"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
- "versions": {"action": "v1", "tools": "v1", "prompt": "v7", "trajectory": "v1"},
+ "max_actions": 60,
+ "versions": {"agent": "v1", "action": "v1", "tools": "v1", "prompt": "v8", "trajectory": "v1"},
+ "agent_version": "v1", "prompt_version": "v8",
  "toolset": "toy-v2", "tools_enabled": ["list_files", "..."],
  "tool_versions": {"list_files": 0, "read_lines": 0, "finish": 0},
+ "context_policy": {"max_history": 6, "observation_limit": 1200,
+                    "notes_limit": 4000, "read_repeat_warning": 5,
+                    "stale_edit_steps": 10},
  "retry_policy": {"max_parse_attempts": 2, "max_dsml_retries": 2},
  "status": "...", "stop_reason": "...", "steps": 17,
  "model_calls": 0, "tokens": {"prompt": 0, "completion": 0}, "cost_usd": 0.0,
@@ -366,6 +372,9 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-25 | v1 | `prompt` 升 v7：移除 `tests/test_visible.py` 的任務耦合，改為通用 workspace hint（先 list_files/search_text 找測試）；`summary` 增加 `prompt_version`，web 歷史記錄保存並顯示 | 兼容（新增欄位；prompt 行為改變） |
 | 2026-11-25 | v1 | 解析重試可配置：`max_parse_attempts` / `max_dsml_retries`；DSML 失敗不佔正常解析次數，但仍計入 API/token/cost；`summary` 增加 `retry_policy` | 兼容（新增設定與欄位） |
 | 2026-11-25 | v1 | 新增 canonical evaluation envelope：`resolved`／`status`／`execution_valid`／`metrics`／`new_regressions`／`errors`／`cases`／`details`；toy 与 Sphinx 各自映射，报告不再依赖任务专属字段 | 评测消费者需改读 `metrics`；旧结果仍在 `details` |
+| 2026-11-26 | v1 | `max_actions` 成为 run 参数与 web 表单栏位（默认 60）；`run.py` 将它覆盖进 `task.protocol` 并在 summary 记录实际值；CLI 增加 `--max-actions` | 兼容（新增参数与 summary 字段） |
+| 2026-11-26 | v1 | `prompt` 升 v8：加入持久运行摘要、重复读取/久未修改警告、read_lines 与测试 observation 的摘要化；`max_history`／`observation_limit`／`notes_limit`／loop guard 可通过 `LLM_*` 环境变量调整 | 兼容（prompt 行为与 context 設定改變） |
+| 2026-11-26 | v1 | 新增 `agent_core.AGENT_VERSION`（v1）；`summary.versions.agent`、`summary.agent_version` 与 web 历史表记录并显示 agent 版本；`summary.context_policy` 记录 context 参数 | 兼容（新增欄位） |
 
 ## 10. 常见事故（本文件要防的东西）
 

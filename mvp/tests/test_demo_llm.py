@@ -11,6 +11,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from agent_core.agent import AGENT_VERSION
 from mvp.demo import run
 from mvp.scripted_policy import FINAL_CONFIG
 
@@ -71,7 +72,8 @@ class LLMDemoTests(unittest.TestCase):
         self.assertEqual(summary["evaluation"]["metrics"]["pass_to_pass"]["passed"], 3)
         self.assertEqual(summary["model"], "fake-model")
         self.assertEqual(summary["model_calls"], 10)
-        self.assertEqual(summary["versions"]["prompt"], "v7")
+        self.assertEqual(summary["versions"]["prompt"], "v8")
+        self.assertEqual(summary["versions"]["agent"], AGENT_VERSION)
         self.assertEqual(summary["tokens"], {"prompt": 100, "completion": 50})
         self.assertEqual(summary["llm_log"], "llm_calls.jsonl")
         self.assertEqual(len(transport.payloads), 10)

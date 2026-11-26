@@ -29,6 +29,11 @@
         <input id="model" type="text" placeholder="留空则用 .env 的 LLM_MODEL">
       </label>
 
+      <label>工具集
+        <select id="toolset"></select>
+      </label>
+      <p class="hint">先選工具集，再勾選要提供給模型的工具。</p>
+
       <fieldset>
         <legend>工具</legend>
         <div id="tools"></div>
@@ -37,6 +42,7 @@
       <details>
         <summary>进阶</summary>
         <label>max steps <input id="max-steps" type="number" min="1" value="30"></label>
+        <label>max actions <input id="max-actions" type="number" min="1" value="60"></label>
         <label>budget USD <input id="budget" type="number" min="0" step="0.01" placeholder="可选"></label>
       </details>
 
@@ -53,28 +59,35 @@
     </section>
 
     <section class="panel results">
-      <h2>运行结果</h2>
-      <div id="status-bar" class="status-bar"></div>
-
-      <div class="columns">
-        <div>
-          <h3>步骤</h3>
-          <ol id="steps" class="steps"></ol>
-        </div>
-        <div>
-          <h3>日志</h3>
-          <pre id="log" class="log"></pre>
-        </div>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="run" type="button" role="tab">运行结果</button>
+        <button class="tab" data-tab="history" type="button" role="tab">历史 run</button>
       </div>
 
-      <div id="result-summary"></div>
-      <iframe id="report" title="report" hidden></iframe>
+      <div id="tab-run" class="tab-panel active" role="tabpanel">
+        <div id="status-bar" class="status-bar"></div>
 
-      <h3>历史 run</h3>
-      <table id="history">
-        <thead><tr><th>时间</th><th>task</th><th>policy</th><th>prompt</th><th>工具</th><th>tools 版本</th><th>status</th><th>resolved</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
+        <div class="columns">
+          <div>
+            <h3>步骤</h3>
+            <ol id="steps" class="steps"></ol>
+          </div>
+          <div>
+            <h3>日志</h3>
+            <pre id="log" class="log"></pre>
+          </div>
+        </div>
+
+        <div id="result-summary"></div>
+        <iframe id="report" title="report" hidden></iframe>
+      </div>
+
+      <div id="tab-history" class="tab-panel" role="tabpanel">
+        <table id="history">
+          <thead><tr><th>时间</th><th>task</th><th>policy</th><th>agent</th><th>prompt</th><th>工具</th><th>tools 版本</th><th>status</th><th>resolved</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </section>
   </main>
 

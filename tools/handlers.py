@@ -20,6 +20,11 @@ MAX_PATCH_BYTES = 2_000_000
 FATAL_STATUSES = {"environment_error", "test_load_error", "execution_timeout"}
 
 
+def _require_case_sensitive(value):
+    if not isinstance(value, bool):
+        raise ValueError("case_sensitive must be a bool")
+
+
 @dataclass
 class HandlerContext:
     specs: dict
@@ -53,6 +58,7 @@ def read_lines(env, ctx, path, start=1, end=None):
 def search_text(env, ctx, query, path=".", limit=100, case_sensitive=True):
     if not isinstance(query, str) or not query:
         raise ValueError("Expected a literal query")
+    _require_case_sensitive(case_sensitive)
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 2000:
         raise ValueError("limit must be between 1 and 2000")
     candidates = env.list_files(path)
@@ -179,6 +185,200 @@ def run_visible_tests(env, ctx, paths, timeout_seconds=None):
     return result
 
 
+def search_regex(env, ctx, pattern, path=".", limit=100, case_sensitive=True):
+    if not isinstance(pattern, str) or not pattern:
+        raise ValueError("Expected a nonempty regular expression")
+    _require_case_sensitive(case_sensitive)
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 2000:
+        raise ValueError("limit must be between 1 and 2000")
+    try:
+        regex = re.compile(pattern, 0 if case_sensitive else re.IGNORECASE)
+    except re.error as exc:
+        raise ValueError("Invalid regular expression: %s" % exc)
+    matches = []
+    binary = []
+    for name in sorted(env.list_files(path)):
+        try:
+            content = env.read_text(name)
+        except UnicodeError:
+            binary.append(name)
+            continue
+        for number, line in enumerate(content.splitlines(), 1):
+            if regex.search(line):
+                matches.append({"path": name, "line": number, "text": line})
+    return {"matches": matches[:limit], "total": len(matches), "truncated": len(matches) > limit,
+            "binary_files_skipped": len(binary)}
+
+
+def map_repository(env, ctx, path=".", limit=200):
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 2000:
+        raise ValueError("limit must be between 1 and 2000")
+    py_files = [name for name in sorted(env.list_files(path)) if name.endswith(".py")]
+    truncated = len(py_files) > limit
+    outline = {}
+    symbol_count = 0
+    for name in py_files[:limit]:
+        try:
+            source = env.read_text(name)
+        except (UnicodeError, OSError):
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as exc:
+            outline[name] = {"error": "SyntaxError: %s" % exc.msg}
+            continue
+        symbols = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                symbols.append({"kind": "function", "name": node.name, "line": node.lineno})
+            elif isinstance(node, ast.ClassDef):
+                methods = [{"name": child.name, "line": child.lineno}
+                           for child in node.body
+                           if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))]
+                symbols.append({"kind": "class", "name": node.name,
+                                "line": node.lineno, "methods": methods})
+        symbol_count += len(symbols)
+        if symbols:
+            outline[name] = symbols
+    return {"files": outline, "file_count": len(outline),
+            "python_files": len(py_files), "symbol_count": symbol_count,
+            "truncated": truncated}
+
+
+def find_symbol(env, ctx, symbol, path=".", limit=100):
+    if not isinstance(symbol, str) or not symbol.isidentifier():
+        raise ValueError("symbol must be a valid identifier")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 2000:
+        raise ValueError("limit must be between 1 and 2000")
+    word = re.compile(r"\b" + re.escape(symbol) + r"\b")
+    definitions = []
+    references = []
+    binary = 0
+    for name in sorted(env.list_files(path)):
+        try:
+            source = env.read_text(name)
+        except UnicodeError:
+            binary += 1
+            continue
+        except OSError:
+            continue
+        if name.endswith(".py"):
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                tree = None
+            if tree is not None:
+                for node in ast.walk(tree):
+                    if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                            and node.name == symbol):
+                        kind = "class" if isinstance(node, ast.ClassDef) else "function"
+                        definitions.append({"path": name, "line": node.lineno, "kind": kind})
+        for number, line in enumerate(source.splitlines(), 1):
+            if word.search(line):
+                references.append({"path": name, "line": number, "text": line})
+    return {"definitions": definitions, "references": references[:limit],
+            "definition_count": len(definitions), "reference_count": len(references),
+            "truncated": len(references) > limit, "binary_files_skipped": binary}
+
+
+def create_file(env, ctx, path, content=""):
+    env.require_editable(path)
+    if not isinstance(content, str):
+        raise ValueError("content must be a string")
+    if env.exists(path):
+        raise ValueError("File already exists; use edit_lines or replace_text")
+    if path.lower().endswith(".py"):
+        ast.parse(content, filename=path)
+    env.write_text(path, content)
+    return {"changed_paths": [path]}
+
+
+def edit_lines(env, ctx, path, start, end, new):
+    env.require_editable(path)
+    if not env.exists(path) or not env.is_file(path):
+        raise ValueError("edit_lines requires an existing regular file")
+    if not isinstance(start, int) or isinstance(start, bool) or start < 1:
+        raise ValueError("start must be a positive integer")
+    if not isinstance(end, int) or isinstance(end, bool) or end < start:
+        raise ValueError("end must be >= start")
+    if not isinstance(new, str):
+        raise ValueError("new must be a string")
+    before = env.read_text(path)
+    lines = before.splitlines()
+    if end > len(lines):
+        raise ValueError("end exceeds the file length (%d lines)" % len(lines))
+    newline = "\r\n" if "\r\n" in before else "\n"
+    replacement = new.splitlines() if new != "" else []
+    merged = lines[:start - 1] + replacement + lines[end:]
+    after = newline.join(merged)
+    # Preserve the file's trailing-newline convention. When the edit reaches
+    # the last line, also honor a trailing newline explicitly supplied in
+    # ``new`` (splitlines() would otherwise discard it).
+    keep_trailing = bool(merged) and (
+        before.endswith(("\n", "\r"))
+        or (new != "" and end == len(lines) and new.endswith(("\n", "\r")))
+    )
+    if keep_trailing:
+        after += newline
+    if path.lower().endswith(".py"):
+        ast.parse(after, filename=path)
+    env.write_text(path, after)
+    return {"changed_paths": [path]}
+
+
+def revert_file(env, ctx, path):
+    env.require_editable(path)
+    git = getattr(env, "git", "git")
+    tracked = env.run([git, "cat-file", "-e", "HEAD:" + path], timeout=30)
+    if tracked["returncode"] == 0:
+        result = env.run([git, "checkout", "HEAD", "--", path], timeout=30)
+        if result["returncode"]:
+            raise ValueError("revert failed: " + result["stderr"])
+        action = "restored"
+    elif env.exists(path) and env.is_file(path):
+        env.delete(path)
+        action = "deleted"
+    else:
+        raise ValueError("Cannot revert: path is not in the baseline and does not exist")
+    return {"changed_paths": [path], "action": action}
+
+
+def show_diff(env, ctx, path=None):
+    """Show the workspace diff against HEAD.
+
+    ``git add -A`` is intentional here: it lets the model see new/untracked
+    files in the returned diff. It also stages changes in the real git index
+    (a side effect documented in the tool spec).
+    """
+    git = getattr(env, "git", "git")
+    if path is not None:
+        if not isinstance(path, str) or not path:
+            raise ValueError("path must be a nonempty string when provided")
+        env.require_readable(path)
+    staged = env.run([git, "add", "-A"], timeout=30)
+    if staged["returncode"]:
+        raise ValueError("git add failed: " + staged["stderr"])
+    command = [git, "diff", "--cached", "HEAD"]
+    if path is not None:
+        command += ["--", path]
+    result = env.run(command, timeout=30)
+    if result["returncode"] not in (0, 1):
+        raise ValueError("git diff failed: " + result["stderr"])
+    diff = result["stdout"]
+    names_command = [git, "diff", "--cached", "--name-only", "-z", "HEAD"]
+    if path is not None:
+        names_command += ["--", path]
+    names = env.run(names_command, timeout=30)
+    if names["returncode"] not in (0, 1):
+        raise ValueError("git diff --name-only failed: " + names["stderr"])
+    files = sorted(name for name in names["stdout"].split("\0") if name)
+    truncated = False
+    if len(diff) > 20000:
+        diff = diff[:20000] + "\n…（diff 已截断）"
+        truncated = True
+    return {"diff": diff, "changed_files": files, "truncated": truncated}
+
+
 def finish(env, ctx, reason):
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("A nonempty stopping reason is required")
@@ -189,8 +389,15 @@ HANDLERS = {
     "list_files": list_files,
     "read_lines": read_lines,
     "search_text": search_text,
+    "search_regex": search_regex,
+    "map_repository": map_repository,
+    "find_symbol": find_symbol,
     "apply_patch": apply_patch,
     "replace_text": replace_text,
+    "create_file": create_file,
+    "edit_lines": edit_lines,
+    "revert_file": revert_file,
+    "show_diff": show_diff,
     "run_visible_tests": run_visible_tests,
     "finish": finish,
 }

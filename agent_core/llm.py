@@ -37,7 +37,8 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 # Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
 # attributable. v3: tool table is now derived from the selected toolset.
-PROMPT_VERSION = "v7"
+# v8: persistent run notes, loop warnings and tool-aware observation clipping.
+PROMPT_VERSION = "v8"
 
 DEFAULT_WORKSPACE_HINT = (
     "工作区是仓库根目录；先用 list_files 查看 tests/ 或其他目录，"
@@ -49,14 +50,16 @@ DEFAULT_WORKSPACE_HINT = (
 PHASE_BY_TOOL = {
     "map_repository": "认识仓库",
     "find_symbol": "寻找代码",
-    "read_file": "阅读上下文",
-    "plan": "制定计划",
     "replace_text": "修改代码",
-    "run_tests": "验证",
     "list_files": "列出文件",
     "search_text": "搜索文本",
+    "search_regex": "搜索文本",
     "read_lines": "阅读行区间",
     "apply_patch": "应用补丁",
+    "create_file": "修改代码",
+    "edit_lines": "修改代码",
+    "revert_file": "修改代码",
+    "show_diff": "检查修改",
     "run_visible_tests": "验证",
     "finish": "提交结果",
 }
@@ -99,7 +102,8 @@ class LLMPolicy:
 
     def __init__(self, task, model=DEFAULT_MODEL, api_key="", base_url=DEFAULT_BASE_URL,
                  transport=None, temperature=0.0, max_tokens=4096, timeout=120,
-                 max_history=6, observation_limit=1200,
+                 max_history=6, observation_limit=1200, notes_limit=4000,
+                 read_repeat_warning=5, stale_edit_steps=10,
                  max_parse_attempts=2, max_dsml_retries=2,
                  input_price=0.0, output_price=0.0, log_path=None,
                  json_mode="auto", toolset=DEFAULT_TOOLSET, tools=None,
@@ -114,6 +118,22 @@ class LLMPolicy:
         self.timeout = timeout
         self.max_history = max_history
         self.observation_limit = observation_limit
+        self.notes_limit = notes_limit
+        self.read_repeat_warning = read_repeat_warning
+        self.stale_edit_steps = stale_edit_steps
+        if not isinstance(max_history, int) or isinstance(max_history, bool) or max_history < 1:
+            raise ValueError("max_history must be a positive integer")
+        if (not isinstance(observation_limit, int) or isinstance(observation_limit, bool)
+                or observation_limit < 1):
+            raise ValueError("observation_limit must be a positive integer")
+        if not isinstance(notes_limit, int) or isinstance(notes_limit, bool) or notes_limit < 1:
+            raise ValueError("notes_limit must be a positive integer")
+        if (not isinstance(read_repeat_warning, int) or isinstance(read_repeat_warning, bool)
+                or read_repeat_warning < 1):
+            raise ValueError("read_repeat_warning must be a positive integer")
+        if (not isinstance(stale_edit_steps, int) or isinstance(stale_edit_steps, bool)
+                or stale_edit_steps < 1):
+            raise ValueError("stale_edit_steps must be a positive integer")
         if (not isinstance(max_parse_attempts, int) or isinstance(max_parse_attempts, bool)
                 or max_parse_attempts < 1):
             raise ValueError("max_parse_attempts must be a positive integer")
@@ -165,11 +185,259 @@ class LLMPolicy:
                                       edit_tool=edit_tool,
                                       edit_example=example)
 
+    @staticmethod
+    def _observation_ok(observation):
+        value = observation.get("ok") if isinstance(observation, dict) else None
+        return "error" not in observation if value is None else bool(value)
+
     def _clip(self, value):
         text = json.dumps(value, ensure_ascii=False)
         if len(text) <= self.observation_limit:
             return text
         return text[: self.observation_limit] + "…（已截断）"
+
+    def _read_lines_text(self, observation):
+        """Keep read_lines metadata and a contiguous shown range.
+
+        A generic JSON cut would hide the later lines and force the model to
+        re-read overlapping ranges. This form says exactly where the visible
+        text ends and where to continue.
+        """
+        result = observation.get("result")
+        if not isinstance(result, dict) or not isinstance(result.get("lines"), list):
+            return self._clip(observation)
+        base = {key: observation[key] for key in
+                ("ok", "tool", "error", "kind", "fatal", "changed_paths")
+                if key in observation}
+        compact = {key: result[key] for key in
+                   ("path", "start", "end", "total_lines", "truncated")
+                   if key in result}
+        compact["lines"] = []
+        line_budget = max(1, self.observation_limit - 320)
+
+        def truncation_note(last):
+            if last is None:
+                return "没有任何一行能完整显示；请缩小读取范围。"
+            return (f"只显示到 line {last}；若要继续读取，请用 "
+                    f"read_lines(start={last + 1}, end=...)。")
+
+        for item in result["lines"]:
+            compact["lines"].append(item)
+            if len(json.dumps({**base, "result": compact}, ensure_ascii=False)) > line_budget:
+                compact["lines"].pop()
+                break
+        if not compact["lines"] and result["lines"]:
+            # Always try to show at least one line; the truncation note is
+            # still added below and the final size check may remove it.
+            compact["lines"].append(result["lines"][0])
+        total = len(result["lines"])
+        shown = len(compact["lines"])
+        if shown < total:
+            last = compact["lines"][-1].get("line") if compact["lines"] else None
+            compact["shown_until"] = last
+            compact["omitted"] = (f"{last + 1}-{result.get('end')}" if last is not None
+                                  else "all")
+            compact["note"] = truncation_note(last)
+        base["result"] = compact
+        text = json.dumps(base, ensure_ascii=False)
+        # The note itself must survive: trim lines, not the note.
+        while compact["lines"] and len(text) > self.observation_limit:
+            compact["lines"].pop()
+            last = compact["lines"][-1].get("line") if compact["lines"] else None
+            compact["shown_until"] = last
+            compact["omitted"] = (f"{last + 1}-{result.get('end')}" if last is not None
+                                  else "all")
+            compact["note"] = truncation_note(last)
+            text = json.dumps(base, ensure_ascii=False)
+        return text if len(text) <= self.observation_limit else self._clip(base)
+
+    def _test_text(self, observation):
+        """Preserve test status/counts while trimming the huge process output."""
+        result = observation.get("result")
+        if not isinstance(result, dict):
+            return self._clip(observation)
+        base = {key: observation[key] for key in
+                ("ok", "tool", "error", "kind", "fatal", "changed_paths")
+                if key in observation}
+        compact = {key: result[key] for key in
+                   ("status", "passed", "failed", "errors", "skipped", "collected",
+                    "returncode", "timed_out", "truncated")
+                   if key in result}
+        stdout = result.get("stdout") or result.get("output") or ""
+        stderr = result.get("stderr") or ""
+        if stdout:
+            compact["stdout_tail"] = str(stdout)[-600:]
+        if stderr:
+            compact["stderr_tail"] = str(stderr)[-300:]
+        if result.get("error"):
+            compact["error"] = str(result["error"])[:300]
+        cases = result.get("cases")
+        if isinstance(cases, list) and cases:
+            compact["cases"] = cases[:3]
+            compact["cases_total"] = len(cases)
+        base["result"] = compact
+        return self._clip(base)
+
+    def _search_text(self, observation):
+        """Keep the first matches and the total; trim the long text fields."""
+        result = observation.get("result")
+        if not isinstance(result, dict):
+            return self._clip(observation)
+        base = {key: observation[key] for key in
+                ("ok", "tool", "error", "kind", "fatal", "changed_paths")
+                if key in observation}
+        compact = {key: result[key] for key in
+                   ("query", "path", "total", "truncated", "binary_files_skipped")
+                   if key in result}
+        compact["matches"] = []
+        matches = result.get("matches") if isinstance(result.get("matches"), list) else []
+        for item in matches:
+            compact["matches"].append(item)
+            if len(json.dumps({**base, "result": compact}, ensure_ascii=False)) > self.observation_limit:
+                compact["matches"].pop()
+                break
+        if len(compact["matches"]) < len(matches):
+            compact["shown"] = len(compact["matches"])
+            compact["note"] = "只显示前几笔匹配；请缩小 path 或 query。"
+        base["result"] = compact
+        text = json.dumps(base, ensure_ascii=False)
+        return text if len(text) <= self.observation_limit else self._clip(base)
+
+    def _observation_text(self, observation):
+        if not isinstance(observation, dict):
+            return self._clip(observation)
+        tool = observation.get("tool")
+        if tool == "read_lines":
+            return self._read_lines_text(observation)
+        if tool == "run_visible_tests":
+            return self._test_text(observation)
+        if tool == "search_text":
+            return self._search_text(observation)
+        return self._clip(observation)
+
+    @staticmethod
+    def _ranges_text(ranges):
+        items = sorted(ranges.items(), key=lambda item: (-item[1], item[0]))
+        parts = []
+        for (start, end), count in items[:4]:
+            label = f"{start}–{end}" if end is not None else f"{start}–"
+            if count > 1:
+                label += f"×{count}"
+            parts.append(label)
+        if len(items) > 4:
+            parts.append(f"+{len(items) - 4} 其他")
+        return "，".join(parts) if parts else "—"
+
+    def _notes_text(self, history):
+        """Build persistent notes from the entire history, not just the window."""
+        if not history:
+            return "尚无操作，这是第一步。"
+        reads = {}
+        edits = {}
+        tests = []
+        searches = {}
+        discovered = set()
+        read_or_edited = set()
+        last_edit_step = None
+
+        for event in history:
+            step = event.get("step")
+            action = event.get("action") or {}
+            tool = action.get("tool")
+            args = action.get("args") or {}
+            observation = event.get("observation") or {}
+            result = observation.get("result") if isinstance(observation, dict) else None
+            result = result if isinstance(result, dict) else {}
+            ok = self._observation_ok(observation)
+
+            if tool == "read_lines" and ok:
+                path = args.get("path") or result.get("path")
+                if path:
+                    entry = reads.setdefault(path, {"count": 0, "ranges": {}})
+                    entry["count"] += 1
+                    start = result.get("start", args.get("start", 1))
+                    end = result.get("end", args.get("end"))
+                    key = (start, end)
+                    entry["ranges"][key] = entry["ranges"].get(key, 0) + 1
+                    read_or_edited.add(path)
+            elif tool in {"replace_text", "apply_patch"} and ok:
+                changed = observation.get("changed_paths") or result.get("changed_paths") or []
+                if not changed and args.get("path"):
+                    changed = [args["path"]]
+                for path in changed:
+                    edits.setdefault(path, []).append(step)
+                    read_or_edited.add(path)
+                    last_edit_step = step
+            elif tool == "run_visible_tests" and ok:
+                tests.append({
+                    "step": step,
+                    "targets": list(args.get("paths") or []),
+                    "status": result.get("status", observation.get("status", "unknown")),
+                    "passed": result.get("passed"),
+                    "failed": result.get("failed"),
+                })
+            elif tool == "search_text" and ok:
+                query = args.get("query", "")
+                total = result.get("total", len(result.get("matches") or []))
+                entry = searches.setdefault(query, {"count": 0, "last_step": step, "total": total})
+                entry["count"] += 1
+                entry["last_step"] = step
+                entry["total"] = total
+                for match in result.get("matches") or []:
+                    path = match.get("path") if isinstance(match, dict) else None
+                    if path and path not in read_or_edited:
+                        discovered.add(path)
+
+        history_steps = len(history)
+        warnings = []
+        if reads:
+            path, entry = max(reads.items(), key=lambda item: item[1]["count"])
+            if entry["count"] >= self.read_repeat_warning:
+                warnings.append(
+                    f"重复读取：{path} 已读取 {entry['count']} 次；"
+                    "请基于已读内容直接做最小修改或 finish，不要继续重复读取。")
+        if last_edit_step is None and history_steps >= self.stale_edit_steps:
+            warnings.append(
+                f"已连续 {history_steps} 步没有修改任何文件；请优先做最小修改。")
+        elif (last_edit_step is not None
+              and history_steps - last_edit_step >= self.stale_edit_steps):
+            warnings.append(
+                f"自 step {last_edit_step} 后已 {history_steps - last_edit_step} 步没有新的修改；"
+                "请优先做最小修改或 finish。")
+
+        lines = ["持久摘要（由完整历史生成，不受最近几步窗口限制）："]
+        for warning in warnings:
+            lines.append("- 警告：" + warning)
+        if reads:
+            ordered = sorted(reads.items(), key=lambda item: -item[1]["count"])[:6]
+            for path, entry in ordered:
+                lines.append(f"- 已读 {path} ×{entry['count']}，范围 "
+                             f"{self._ranges_text(entry['ranges'])}")
+        else:
+            lines.append("- 尚未读取任何文件。")
+        if edits:
+            ordered = sorted(edits.items(), key=lambda item: item[1][-1])[:6]
+            for path, steps in ordered:
+                lines.append(f"- 已修改 {path}（step {', '.join(map(str, steps))}）")
+        else:
+            lines.append("- 尚未修改任何文件。")
+        if tests:
+            for item in tests[-5:]:
+                targets = item["targets"]
+                target_text = ", ".join(targets[:2]) + (" 等" if len(targets) > 2 else "")
+                lines.append(f"- step {item['step']} 测试 {target_text or '—'} -> "
+                             f"{item['status']}（passed={item['passed']}, failed={item['failed']}）")
+        if searches:
+            for query, entry in sorted(searches.items(), key=lambda item: item[1]["last_step"])[-5:]:
+                lines.append(f"- step {entry['last_step']} 搜索 {query!r} -> "
+                             f"{entry['total']} 笔匹配（共 {entry['count']} 次）")
+        unread = sorted(discovered - read_or_edited - set(edits))
+        if unread:
+            lines.append("- 搜索发现但尚未读取/修改：" + "，".join(unread[:8]))
+        text = "\n".join(lines)
+        if len(text) > self.notes_limit:
+            text = text[: self.notes_limit] + "\n…（摘要已截断）"
+        return text
 
     def _history_text(self, history):
         if not history:
@@ -179,16 +447,22 @@ class LLMPolicy:
             action = event.get("action", {})
             args = json.dumps(action.get("args", {}), ensure_ascii=False)
             lines.append(f"[{event.get('step')}] {action.get('tool')}({args})")
-            lines.append(f"    结果: {self._clip(event.get('observation', {}))}")
+            lines.append(f"    结果: {self._observation_text(event.get('observation', {}))}")
         return "\n".join(lines)
 
     def _messages(self, history):
+        if history:
+            recent_count = min(len(history), self.max_history)
+            context = (f"持久摘要：\n{self._notes_text(history)}\n\n"
+                       f"最近 {recent_count} 步：\n{self._history_text(history)}")
+        else:
+            context = "尚无操作，这是第一步。"
         messages = [
             {"role": "system", "content": self.system_prompt()},
             {"role": "user", "content": (
                 f"任务：{self.task}\n\n"
                 f"{self.workspace_hint}\n\n"
-                f"到目前为止：\n{self._history_text(history)}"
+                f"到目前为止：\n{context}"
             )},
         ]
         if self.last_extra_actions:
@@ -425,6 +699,21 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
     kwargs.setdefault(
         "max_dsml_retries",
         int(_first_env("LLM_MAX_DSML_RETRIES", default="2")))
+    kwargs.setdefault(
+        "max_history",
+        int(_first_env("LLM_MAX_HISTORY", default="6")))
+    kwargs.setdefault(
+        "observation_limit",
+        int(_first_env("LLM_OBSERVATION_LIMIT", default="1200")))
+    kwargs.setdefault(
+        "notes_limit",
+        int(_first_env("LLM_NOTES_LIMIT", default="4000")))
+    kwargs.setdefault(
+        "read_repeat_warning",
+        int(_first_env("LLM_READ_REPEAT_WARNING", default="5")))
+    kwargs.setdefault(
+        "stale_edit_steps",
+        int(_first_env("LLM_STALE_EDIT_STEPS", default="10")))
     return LLMPolicy(
         task=task,
         model=resolved_model,

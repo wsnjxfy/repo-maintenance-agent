@@ -46,7 +46,7 @@ class TaskEntry:
     policies: list
     build: Callable
     preflight: Callable
-    edit_tools: tuple = ("replace_text", "apply_patch")
+    edit_tools: tuple = ("replace_text", "apply_patch", "create_file", "edit_lines")
     notes: str = ""
 
     def asdict(self):

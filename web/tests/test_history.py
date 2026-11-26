@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fastapi.testclient import TestClient
 
+from agent_core.agent import AGENT_VERSION
 from agent_core.llm import PROMPT_VERSION
 from web import server
 
@@ -37,7 +38,7 @@ class HistoryTests(unittest.TestCase):
             "mode": "llm_demo",
             "tools_enabled": ["list_files", "finish"],
             "tool_versions": {"list_files": 0, "finish": 0},
-            "versions": {"prompt": PROMPT_VERSION},
+            "versions": {"agent": AGENT_VERSION, "prompt": PROMPT_VERSION},
             "model": "deepseek-flash",
             "max_steps": 30,
             "status": "completed",
@@ -65,6 +66,7 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(record.log_lines, ["line one", "line two"])
         self.assertEqual(record.tool_versions(), {"list_files": 0, "finish": 0})
         self.assertEqual(record.prompt_version(), PROMPT_VERSION)
+        self.assertEqual(record.agent_version(), AGENT_VERSION)
         self.assertTrue(record.done.is_set())
 
     def test_stale_running_metadata_becomes_error(self):
@@ -80,4 +82,5 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(len(data["runs"]), 1)
         self.assertEqual(data["runs"][0]["config"]["task"], "sphinx-7462")
         self.assertEqual(data["runs"][0]["prompt_version"], PROMPT_VERSION)
+        self.assertEqual(data["runs"][0]["agent_version"], AGENT_VERSION)
         self.assertTrue(data["runs"][0]["summary"]["resolved"])

@@ -298,5 +298,67 @@ class TestLLMPolicy(unittest.TestCase):
                     os.environ[name] = value
 
 
+    def test_persistent_notes_keep_early_search_clue_and_warn_on_repeats(self):
+        history = [{
+            "step": 1,
+            "action": {"tool": "search_text",
+                       "args": {"query": "def unparse", "path": "."}},
+            "observation": {"ok": True, "tool": "search_text", "result": {
+                "matches": [{"path": "sphinx/pycode/ast.py", "line": 61,
+                             "text": "def unparse(node: ast.AST) -> str:"}],
+                "total": 1, "truncated": False}},
+        }]
+        for step in range(2, 8):
+            history.append({
+                "step": step,
+                "action": {"tool": "read_lines",
+                           "args": {"path": "sphinx/domains/python.py",
+                                    "start": 116, "end": 128}},
+                "observation": {"ok": True, "tool": "read_lines", "result": {
+                    "path": "sphinx/domains/python.py", "start": 116, "end": 128,
+                    "total_lines": 200, "truncated": False,
+                    "lines": [{"line": 116, "text": "elif isinstance(node, ast.Tuple):"}]}},
+            })
+        content = LLMPolicy(task="t", model="m")._messages(history)[1]["content"]
+        self.assertIn("持久摘要", content)
+        self.assertIn("搜索发现但尚未读取/修改", content)
+        self.assertIn("sphinx/pycode/ast.py", content)
+        self.assertIn("重复读取", content)
+        self.assertIn("已读 sphinx/domains/python.py ×6", content)
+
+    def test_read_lines_observation_points_to_the_omitted_range(self):
+        policy = LLMPolicy(task="t", model="m", observation_limit=500)
+        observation = {
+            "ok": True, "tool": "read_lines",
+            "result": {"path": "sphinx/domains/python.py", "start": 116, "end": 175,
+                       "total_lines": 300, "truncated": False,
+                       "lines": [{"line": number, "text": "x" * 80}
+                                 for number in range(116, 176)]},
+        }
+        text = policy._history_text([{"step": 1, "action": {"tool": "read_lines",
+                                                           "args": {}},
+                                      "observation": observation}])
+        self.assertIn("shown_until", text)
+        self.assertIn("omitted", text)
+        self.assertIn("read_lines(start=", text)
+        self.assertLessEqual(len(text), policy.observation_limit + 200)
+
+    def test_test_observation_keeps_status_when_stdout_is_large(self):
+        policy = LLMPolicy(task="t", model="m", observation_limit=500)
+        observation = {
+            "ok": True, "tool": "run_visible_tests",
+            "result": {"status": "failed", "passed": 0, "failed": 1,
+                       "errors": 0, "skipped": 0, "collected": 1,
+                       "returncode": 1, "timed_out": False,
+                       "stdout": "x" * 5000},
+        }
+        text = policy._history_text([{"step": 1, "action": {"tool": "run_visible_tests",
+                                                           "args": {}},
+                                      "observation": observation}])
+        self.assertIn('"status": "failed"', text)
+        self.assertIn("stdout_tail", text)
+        self.assertLessEqual(len(text), policy.observation_limit + 200)
+
+
 if __name__ == "__main__":
     unittest.main()

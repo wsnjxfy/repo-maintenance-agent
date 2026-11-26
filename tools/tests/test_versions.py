@@ -22,6 +22,6 @@ class ToolVersionTests(unittest.TestCase):
                          {"list_files": 0, "finish": 0})
 
     def test_every_toolset_tool_has_version(self):
-        for toolset in ("toy-v2", "repo-v1"):
+        for toolset in ("toy-v2", "repo-v1", "repo-v2"):
             for name in tool_names(toolset):
                 self.assertIn(name, tool_versions([name]))

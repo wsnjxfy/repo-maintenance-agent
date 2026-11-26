@@ -20,12 +20,15 @@ import time
 from typing import Protocol
 from uuid import uuid4
 
-from agent_core.agent import Agent
+from agent_core.agent import AGENT_VERSION, Agent
 from agent_core.report import write_report
 from runtime.local import LocalEnvironment
 from runtime.session import Session
 from tools.specs import TOOL_SPECS
 from tools.toolsets import tool_labels_for, tool_names, tool_versions, validate_tool_names
+
+
+DEFAULT_MAX_ACTIONS = 60
 
 
 class Task(Protocol):
@@ -81,7 +84,7 @@ def _visibility_summary(task):
 
 
 def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
-        max_steps=None):
+        max_steps=None, max_actions=None):
     _configure_stdout()
     started = time.perf_counter()
     root = Path(output_root) if output_root is not None else Path(
@@ -90,6 +93,15 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
     max_steps = int(max_steps if max_steps is not None else getattr(task, "max_steps", 16))
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
+    if max_actions is None:
+        max_actions = int(getattr(task, "protocol", {}).get("max_actions",
+                                                            DEFAULT_MAX_ACTIONS))
+    else:
+        max_actions = int(max_actions)
+    if max_actions < 1:
+        raise ValueError("max_actions must be positive")
+    protocol = dict(getattr(task, "protocol", {}))
+    protocol["max_actions"] = max_actions
 
     run_id = prefix + "-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
     run_dir = root.resolve() / run_id
@@ -129,7 +141,7 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
                                git=getattr(task, "git", "git"),
                                scratch=run_dir / "scratch")
         specs = {name: TOOL_SPECS[name] for name in names}
-        session = Session(env, run_dir / "controller", task.protocol, specs, set(specs),
+        session = Session(env, run_dir / "controller", protocol, specs, set(specs),
                           initial_manifest=env.manifest())
         session.activate()
 
@@ -188,11 +200,20 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
         "mode": "llm_demo" if hasattr(policy, "model") else "scripted_demo",
         "task_id": getattr(task, "task_id", ""),
         "versions": {
+            "agent": AGENT_VERSION,
             "action": "v1", "tools": "v1",
             "prompt": getattr(policy, "prompt_version", "v1"),
             "trajectory": "v1",
         },
+        "agent_version": AGENT_VERSION,
         "prompt_version": getattr(policy, "prompt_version", None),
+        "context_policy": ({
+            "max_history": getattr(policy, "max_history", None),
+            "observation_limit": getattr(policy, "observation_limit", None),
+            "notes_limit": getattr(policy, "notes_limit", None),
+            "read_repeat_warning": getattr(policy, "read_repeat_warning", None),
+            "stale_edit_steps": getattr(policy, "stale_edit_steps", None),
+        } if hasattr(policy, "max_history") else None),
         "retry_policy": ({
             "max_parse_attempts": getattr(policy, "max_parse_attempts", None),
             "max_dsml_retries": getattr(policy, "max_dsml_retries", None),
@@ -208,6 +229,7 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
         "stop_reason": reason,
         "steps": len(history),
         "max_steps": max_steps,
+        "max_actions": max_actions,
         "actions": session.state["action_count"] if session is not None else 0,
         "model_calls": getattr(policy, "calls", 0),
         "tokens": ({"prompt": sum(item.get("prompt_tokens", 0) for item in usages),

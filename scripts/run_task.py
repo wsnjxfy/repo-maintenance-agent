@@ -23,9 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent_core.agent import Action
 from agent_core.llm import policy_from_env
-from run import run
+from run import DEFAULT_MAX_ACTIONS, run
 from tasks.registry import get_entry
-from tools.toolsets import validate_tool_names
+from tools.toolsets import tool_names, validate_tool_names
 
 
 class EmptyPolicy:
@@ -89,10 +89,12 @@ def _build_policy(args, entry, task, names):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Launch one agent run (CLI/portal shared).")
     parser.add_argument("--task", required=True)
+    parser.add_argument("--toolset", help="Toolset name (default: the task's toolset)")
     parser.add_argument("--tools", help="Comma-separated tool subset (default: task default)")
     parser.add_argument("--policy", default="scripted")
     parser.add_argument("--model")
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--max-actions", type=int, default=DEFAULT_MAX_ACTIONS)
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--max-total-tokens", type=int)
     parser.add_argument("--max-parse-attempts", type=int)
@@ -112,12 +114,23 @@ def main(argv=None):
 
     try:
         entry = get_entry(args.task)
-        names = (validate_tool_names([t.strip() for t in args.tools.split(",") if t.strip()])
-                 if args.tools else list(entry.default_tools))
+        toolset = args.toolset or entry.toolset
+        allowed = tool_names(toolset)
+        if args.tools:
+            names = validate_tool_names(
+                [t.strip() for t in args.tools.split(",") if t.strip()])
+            extras = sorted(set(names) - set(allowed))
+            if extras:
+                parser.error(
+                    f"tools not in toolset {toolset!r}: {', '.join(extras)}")
+        else:
+            names = list(allowed) if args.toolset else list(entry.default_tools)
         task = entry.build(_options(args))
+        task.toolset = toolset
         policy, factory = _build_policy(args, entry, task, names)
         summary, _, _ = run(task, policy, tools=names, policy_factory=factory,
-                            output_root=args.output_dir, max_steps=args.max_steps)
+                            output_root=args.output_dir, max_steps=args.max_steps,
+                            max_actions=args.max_actions)
     except (RuntimeError, ValueError, FileNotFoundError) as exc:
         parser.error(str(exc))
     return 0 if summary.get("resolved") else 1

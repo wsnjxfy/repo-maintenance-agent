@@ -34,15 +34,19 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from agent_core.agent import AGENT_VERSION
 from agent_core.llm import PROMPT_VERSION
+from run import DEFAULT_MAX_ACTIONS
 from tasks.registry import TASKS, get_entry
 from tools.specs import TOOL_SPECS
-from tools.toolsets import available_tools, tool_versions, validate_tool_names
+from tools.toolsets import (
+    TOOLSETS, available_tools, tool_names, tool_versions, validate_tool_names,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 RUNS_ROOT = REPO_ROOT / "runs" / "web"
-EDIT_TOOLS = ("replace_text", "apply_patch")
+EDIT_TOOLS = ("replace_text", "apply_patch", "create_file", "edit_lines")
 REQUIRED_TOOL = "finish"
 MAX_CONCURRENT = 1
 
@@ -93,8 +97,15 @@ class RunRecord:
             "run_dir": self._run_subdir_name(),
             "tool_versions": self.tool_versions(),
             "prompt_version": self.prompt_version(),
+            "agent_version": self.agent_version(),
             "summary": self.summary(),
         }
+
+    def agent_version(self):
+        if self.config.get("agent_version"):
+            return self.config["agent_version"]
+        summary = self.summary() or {}
+        return summary.get("agent_version") or (summary.get("versions") or {}).get("agent")
 
     def prompt_version(self):
         if self.config.get("prompt_version"):
@@ -189,13 +200,17 @@ def _reader(record):
 def _launch(record, config):
     cmd = [sys.executable, "-B", "-m", "scripts.run_task",
            "--task", config["task"],
-           "--policy", config["policy"],
-           "--tools", ",".join(config["tools"]),
-           "--output-dir", str(record.output_dir)]
+           "--policy", config["policy"]]
+    if config.get("toolset"):
+        cmd += ["--toolset", config["toolset"]]
+    cmd += ["--tools", ",".join(config["tools"]),
+            "--output-dir", str(record.output_dir)]
     if config.get("model"):
         cmd += ["--model", config["model"]]
     if config.get("max_steps"):
         cmd += ["--max-steps", str(config["max_steps"])]
+    if config.get("max_actions"):
+        cmd += ["--max-actions", str(config["max_actions"])]
     if config.get("budget_usd"):
         cmd += ["--budget-usd", str(config["budget_usd"])]
     env = dict(os.environ)
@@ -238,9 +253,12 @@ def _infer_config(path):
     mode = summary.get("mode", "")
     policy = ("llm" if mode == "llm_demo"
               else "scripted" if mode == "scripted_demo" else "unknown")
-    return {"task": task, "policy": policy,
+    return {"task": task, "toolset": summary.get("toolset"), "policy": policy,
             "tools": list(summary.get("tools_enabled") or []),
             "model": summary.get("model"), "max_steps": summary.get("max_steps"),
+            "max_actions": summary.get("max_actions"),
+            "agent_version": (summary.get("agent_version")
+                              or (summary.get("versions") or {}).get("agent")),
             "budget_usd": summary.get("budget_usd")}
 
 
@@ -281,10 +299,12 @@ def load_runs():
 
 class RunRequest(BaseModel):
     task: str
+    toolset: str | None = None
     tools: list[str] = []
     policy: str = "scripted"
     model: str | None = None
     max_steps: int | None = None
+    max_actions: int = DEFAULT_MAX_ACTIONS
     budget_usd: float | None = None
 
 
@@ -305,6 +325,8 @@ def catalog():
             "required": name == REQUIRED_TOOL,
         })
     return {"tasks": [entry.asdict() for entry in TASKS.values()],
+            "toolsets": [{"name": name, "tools": list(entry["tools"])}
+                         for name, entry in TOOLSETS.items()],
             "tools": tools,
             "edit_tools": list(EDIT_TOOLS),
             "required_tool": REQUIRED_TOOL}
@@ -321,13 +343,31 @@ def preflight(task_id: str, policy: str = "scripted", budget_usd: float | None =
 
 # --- run lifecycle -----------------------------------------------------------
 
-def _normalize_tools(entry, requested):
-    tools = list(requested) if requested else list(entry.default_tools)
+def _normalize_tools(entry, requested, toolset=None):
+    toolset = toolset or entry.toolset
+    try:
+        allowed = tool_names(toolset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if requested:
+        extras = sorted(set(requested) - set(allowed))
+        if extras:
+            raise HTTPException(
+                status_code=400,
+                detail=f"工具不在选择的 toolset {toolset!r} 内：{', '.join(extras)}")
+        tools = list(requested)
+    else:
+        tools = list(allowed)
+    if REQUIRED_TOOL not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"toolset {toolset!r} 缺少必选工具 {REQUIRED_TOOL!r}")
     if REQUIRED_TOOL not in tools:
         tools.append(REQUIRED_TOOL)
     if not any(t in EDIT_TOOLS for t in tools):
-        raise HTTPException(status_code=400,
-                            detail="至少需要一个编辑工具（replace_text 或 apply_patch）")
+        raise HTTPException(
+            status_code=400,
+            detail="至少需要一个编辑工具：" + "、".join(EDIT_TOOLS))
     try:
         return validate_tool_names(tools)
     except ValueError as exc:
@@ -343,16 +383,22 @@ def create_run(req: RunRequest):
     if req.policy not in entry.policies:
         raise HTTPException(status_code=400,
                             detail=f"policy {req.policy!r} 不适用于 {req.task!r}")
-    tools = _normalize_tools(entry, req.tools)
+    if req.max_actions < 1:
+        raise HTTPException(status_code=400, detail="max_actions must be positive")
+    toolset = req.toolset or entry.toolset
+    tools = _normalize_tools(entry, req.tools, toolset)
     with RUNS_LOCK:
         if len(_active_runs()) >= MAX_CONCURRENT:
             raise HTTPException(status_code=429, detail="已有运行中的任务，请先等待或取消。")
         web_run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6]
         output_dir = RUNS_ROOT / web_run_id
         output_dir.mkdir(parents=True, exist_ok=True)
-        config = {"task": req.task, "tools": tools, "policy": req.policy,
+        config = {"task": req.task, "toolset": toolset, "tools": tools,
+                  "policy": req.policy,
                   "model": req.model, "max_steps": req.max_steps,
+                  "max_actions": req.max_actions,
                   "budget_usd": req.budget_usd,
+                  "agent_version": AGENT_VERSION,
                   "prompt_version": PROMPT_VERSION if req.policy == "llm" else None,
                   "tool_versions": tool_versions(tools)}
         record = RunRecord(web_run_id, config, output_dir)
