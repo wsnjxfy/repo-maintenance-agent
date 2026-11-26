@@ -205,8 +205,8 @@ TASKS = {
     "sphinx-7462": TaskEntry(
         task_id="sphinx-7462",
         title="Sphinx 7462",
-        toolset="repo-v1",
-        default_tools=tool_names("repo-v1"),
+        toolset="repo-v2",
+        default_tools=tool_names("repo-v2"),
         policies=["reference", "none", "llm"],
         build=_build_sphinx,
         preflight=_preflight_sphinx,

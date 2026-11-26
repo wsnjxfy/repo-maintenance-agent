@@ -352,3 +352,10 @@
 - `TOOL_SPECS`：移除沒有 handler 的 `read_file`、`plan`、`run_tests`，同步移除 `agent_core.llm.PHASE_BY_TOOL` 的殘留條目與 catalog 測試。
 - 測試：新增 `edit_lines` 無結尾換行回歸測試、`case_sensitive` 型別測試；tools 34 tests 綠，全套件綠。
 
+## 2026-11-26 ｜ Sphinx 預設 toolset 改為 repo-v2
+
+- `experiments/sphinx_7462/task.py` 與 `tasks/registry.py` 的 Sphinx 預設 toolset 改為 `repo-v2`（14 個工具）。
+- `repo-v1` 保留為 6 工具的精簡對照；CLI/Web 仍可顯式選 `repo-v1`。
+- 更新 `docs/interfaces.md` 的 repo toolset 說明與 SphinxTask 測試期望。
+- 測試：`experiments` 37、`web` 23、`tools` 34 全綠。
+

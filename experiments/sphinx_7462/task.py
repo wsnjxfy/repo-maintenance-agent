@@ -18,7 +18,7 @@ from experiments.sphinx_7462.prepare import (
 
 class SphinxTask:
     task_id = TASK_ID
-    toolset = "repo-v1"
+    toolset = "repo-v2"
     run_prefix = "sphinx"
     max_steps = 30
 

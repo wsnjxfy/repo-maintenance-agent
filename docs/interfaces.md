@@ -147,16 +147,22 @@ TOOL_SPECS = {
 | `run_visible_tests` | `paths, timeout_seconds` | 运行指定 pytest 目标 | |
 | `finish` | `reason` | 冻结并导出补丁，判定交给评测 | |
 
-### 3.4 repo-v1（真实仓库，6 个）
+### 3.4 repo toolsets（真实仓库）
 
-| 工具 | 参数 | 说明 |
-| --- | --- | --- |
-| `list_files` | `path, limit` | 列出目录下的文件 |
-| `search_text` | `query, path, limit, case_sensitive` | 字面文本搜索 |
-| `read_lines` | `path, start, end` | 读取行区间 |
-| `apply_patch` | `patch` | unified diff；测试与配置只读，失败还原 |
-| `run_visible_tests` | `paths, timeout_seconds` | 运行最多 30 个 pytest 目标 |
-| `finish` | `reason` | 导出补丁，判定交给评测 |
+`repo-v1` 保留 6 个基础工具：`list_files`、`search_text`、`read_lines`、`apply_patch`、`run_visible_tests`、`finish`。
+
+`repo-v2` 是 Sphinx 的预设工具集，在 `repo-v1` 基础上增加：
+
+| 工具 | 说明 |
+| --- | --- |
+| `search_regex` | 正则按行搜索 |
+| `map_repository` | AST 顶层函数/类地图 |
+| `find_symbol` | 符号定义与文本引用 |
+| `replace_text` | 唯一片段替换 |
+| `create_file` | 新建文件（`.py` 语法检查） |
+| `edit_lines` | 按行区间替换/删除（`.py` 语法检查） |
+| `revert_file` | 回退到 baseline |
+| `show_diff` | 查看相对基线的 diff（会 stage） |
 
 `tools/handlers.py` 是这些动作的唯一实现；`LocalEnvironment + Session` 负责执行、可见性与冻结。旧 `runtime/backends/repo.py` 已删除。
 
@@ -168,8 +174,11 @@ TOOL_SPECS = {
 TOOLSETS = {
     "toy-v2":  {"tools": (...5 个...)},
     "repo-v1": {"tools": (...6 个...)},
+    "repo-v2": {"tools": (...14 个...)},
 }
 ```
+
+Sphinx 预设 `repo-v2`；CLI/Web 仍可显式选择其他 toolset。
 
 规则：
 
