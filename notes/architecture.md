@@ -29,7 +29,7 @@ experiments/     单题/任务适配（Sphinx 仍走旧基线）
 ## 当前状态（2026-11-24）
 
 - toy 已切到 `run.py + ToyTask + LocalEnvironment + Session + handlers`；
-- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v8，toy-v2 用
+- `mvp/demo.py` 支持 `--policy scripted|llm`，prompt v12，toy-v2 用
   `replace_text`；LLM prompt 現含由完整歷史生成的持久摘要（已讀/已改/已測/
   搜索發現未讀）與重複讀取警告，最近窗口與 observation 上限可用 `LLM_*` 調整；
 - `agent_core.AGENT_VERSION`（目前 `v1`）記錄在 summary 與 web 歷史；

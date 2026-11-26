@@ -45,8 +45,8 @@ def main(argv=None):
             pass
     parser = argparse.ArgumentParser(
         description="HJ10 teaching demo: scripted or LLM policy over the shared tool stack.")
-    parser.add_argument("--max-steps", type=int, default=16,
-                        help="Decision step budget (default: 16)")
+    parser.add_argument("--max-steps", type=int, default=60,
+                        help="Decision step budget (default: 60)")
     parser.add_argument("--max-actions", type=int, default=DEFAULT_MAX_ACTIONS,
                         help="Workspace action budget (default: 60)")
     parser.add_argument("--output-dir", type=Path, help="Parent directory for a new run")

@@ -23,4 +23,15 @@ class TestReport(unittest.TestCase):
             self.assertNotIn("<script>", embedded)
             self.assertEqual(json.loads(embedded)["summary"]["task"], content)
 
+    def test_embedding_preserves_per_step_notes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "report.html"
+            events = [{"step": 1, "note": {"finding": "empty tuple", "next": "edit"}}]
+            write_report({"status": "completed"}, events, destination)
+            html = destination.read_text(encoding="utf-8")
+            marker = '<script type="application/json" id="report-data">'
+            embedded = html.split(marker, 1)[1].split("</script>", 1)[0]
+            self.assertEqual(json.loads(embedded)["events"][0]["note"]["finding"],
+                             "empty tuple")
+
 

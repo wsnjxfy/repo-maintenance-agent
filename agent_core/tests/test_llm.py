@@ -199,11 +199,81 @@ class TestLLMPolicy(unittest.TestCase):
             '{"tool": "read_lines", "args": {"path": "cli.py"}, "path": "ignored.py"}'))
         self.assertEqual(policy.next_action([]).args, {"path": "cli.py"})
 
+    def test_note_is_parsed_without_becoming_args(self):
+        reply = self.reply(json.dumps({
+            "tool": "finish",
+            "args": {"reason": "ok"},
+            "note": {"finding": "already fixed", "relevance": "done",
+                     "next": "finish"},
+        }))
+        action = LLMPolicy(task="t", model="m",
+                           transport=lambda payload: reply).next_action([])
+        self.assertEqual(action.args, {"reason": "ok"})
+        self.assertEqual(action.note, {"finding": "already fixed",
+                                      "relevance": "done", "next": "finish"})
+
+    def test_note_without_args_does_not_leak_into_args(self):
+        reply = self.reply(json.dumps({
+            "tool": "finish",
+            "note": {"finding": "done", "next": "finish"},
+        }))
+        action = LLMPolicy(task="t", model="m",
+                           transport=lambda payload: reply).next_action([])
+        self.assertEqual(action.args, {})
+        self.assertEqual(action.note["finding"], "done")
+
+    def test_invalid_note_is_rejected(self):
+        reply = self.reply(json.dumps({"tool": "finish", "args": {"reason": "ok"},
+                                       "note": "not an object"}))
+        with self.assertRaises(RuntimeError):
+            LLMPolicy(task="t", model="m", transport=lambda payload: reply,
+                      max_parse_attempts=1).next_action([])
+
+    def test_default_observation_limit_is_12000(self):
+        self.assertEqual(LLMPolicy(task="t", model="m").observation_limit, 12000)
+
+    def test_observation_limit_controls_read_lines_window(self):
+        observation = {"ok": True, "tool": "read_lines", "result": {
+            "path": "a.py", "start": 1, "end": 60, "total_lines": 60,
+            "lines": [{"line": i, "text": "x" * 40} for i in range(1, 61)],
+        }}
+        small = LLMPolicy(task="t", model="m", observation_limit=1200)
+        compact = json.loads(small._read_lines_text(observation))["result"]
+        self.assertIn("omitted", compact)
+        self.assertLess(compact["shown_until"], 60)
+        large = LLMPolicy(task="t", model="m", observation_limit=10000)
+        full = json.loads(large._read_lines_text(observation))["result"]
+        self.assertNotIn("omitted", full)
+        self.assertEqual(len(full["lines"]), 60)
+
+    def test_invalid_observation_limit_is_rejected(self):
+        with self.assertRaises(ValueError):
+            LLMPolicy(task="t", model="m", observation_limit=0)
+
+    def test_persistent_notes_include_model_note(self):
+        history = [{
+            "step": 2,
+            "action": {"tool": "read_lines", "args": {"path": "a.py"}},
+            "observation": {"ok": True, "result": {"path": "a.py"}},
+            "note": {"finding": "needs edit", "relevance": "same bug",
+                     "next": "edit a.py"},
+        }]
+        text = LLMPolicy(task="t", model="m")._notes_text(history)
+        self.assertIn("模型笔记", text)
+        self.assertIn("needs edit", text)
+        self.assertIn("edit a.py", text)
+
     def test_prompt_states_args_nesting_with_example(self):
         prompt = LLMPolicy(task="t", model="m").system_prompt()
         self.assertIn('"tool": "replace_text", "args"', prompt)
         self.assertIn("所有参数都放在 args 对象里", prompt)
         self.assertIn("回复以 { 开始、以 } 结束", prompt)
+        self.assertIn("traceback 不只是症状入口", prompt)
+        self.assertIn("搜索该函数名的所有定义", prompt)
+        self.assertIn("同名实现", prompt)
+        self.assertIn("note 不是工具参数", prompt)
+        self.assertIn("同一文件或相邻模块", prompt)
+        self.assertIn("返回结构", prompt)
         self.assertNotIn("DSML", prompt)
         self.assertEqual(LLMPolicy(task="t", model="m").prompt_version, PROMPT_VERSION)
 

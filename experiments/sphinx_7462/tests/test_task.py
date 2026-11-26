@@ -107,4 +107,4 @@ class SphinxTaskTests(unittest.TestCase):
         task = self.make_task()
         self.assertEqual(task.protocol["max_actions"], 30)
         self.assertEqual(task.toolset, "repo-v2")
-        self.assertEqual(task.max_steps, 30)
+        self.assertEqual(task.max_steps, 60)

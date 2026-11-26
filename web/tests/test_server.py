@@ -80,6 +80,20 @@ class RunValidationTests(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
         self.assertIn("不在选择的 toolset", r.json()["detail"])
 
+    def test_invalid_observation_limit_is_400(self):
+        r = self.client.post("/api/runs", json={
+            "task": "toy", "policy": "scripted", "observation_limit": 0})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("observation_limit", r.json()["detail"])
+
+    def test_observation_limit_is_recorded(self):
+        with mock.patch.object(server, "_launch", _no_launch):
+            r = self.client.post("/api/runs", json={
+                "task": "toy", "policy": "scripted", "observation_limit": 4000})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["config"]["observation_limit"], 4000)
+        self.assertEqual(r.json()["config"]["max_steps"], 60)
+
     def test_new_edit_tools_are_accepted(self):
         with mock.patch.object(server, "_launch", _no_launch):
             r = self.client.post("/api/runs", json={

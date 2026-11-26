@@ -20,7 +20,7 @@ class SphinxTask:
     task_id = TASK_ID
     toolset = "repo-v2"
     run_prefix = "sphinx"
-    max_steps = 30
+    max_steps = 60
 
     def __init__(self, source_archive, record_path, review_manifest,
                  python, git, skip_env_probe=False):

@@ -72,7 +72,7 @@ class LLMDemoTests(unittest.TestCase):
         self.assertEqual(summary["evaluation"]["metrics"]["pass_to_pass"]["passed"], 3)
         self.assertEqual(summary["model"], "fake-model")
         self.assertEqual(summary["model_calls"], 10)
-        self.assertEqual(summary["versions"]["prompt"], "v8")
+        self.assertEqual(summary["versions"]["prompt"], "v12")
         self.assertEqual(summary["versions"]["agent"], AGENT_VERSION)
         self.assertEqual(summary["tokens"], {"prompt": 100, "completion": 50})
         self.assertEqual(summary["llm_log"], "llm_calls.jsonl")

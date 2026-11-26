@@ -38,7 +38,11 @@ ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 # Bump whenever SYSTEM_TEMPLATE or the exposed tool table changes, so runs stay
 # attributable. v3: tool table is now derived from the selected toolset.
 # v8: persistent run notes, loop warnings and tool-aware observation clipping.
-PROMPT_VERSION = "v8"
+# v9: require a repo-wide symbol search before editing a function.
+# v10: optional per-step note attached to the next action.
+# v11: align with nearby analogous implementations before editing.
+# v12: extract the traceback function name and search all its definitions.
+PROMPT_VERSION = "v12"
 
 DEFAULT_WORKSPACE_HINT = (
     "工作区是仓库根目录；先用 list_files 查看 tests/ 或其他目录，"
@@ -78,7 +82,13 @@ SYSTEM_TEMPLATE = """你是仓库维护 agent。你的整个回复必须是一�
 2. tests/ 下的文件不要修改。
 3. 所有参数都放在 args 对象里，不要放在顶层。
 4. 修改代码后运行可见测试；finish 会冻结补丁。
-5. 回复以 {{ 开始、以 }} 结束；JSON 之外不要有任何字符。任务在下一则消息中给出。
+5. traceback 不只是症状入口，也是函数名线索：先从 traceback 的 "in <函数名>" 取出函数名，用 find_symbol 或 search_text 搜索该函数名的所有定义，再用错误行/错误 pattern 作为补充。
+不要只搜索外层函数名或错误 pattern；找到多个同名实现时，逐一确认是否需要同步修改。
+6. 每一步可以带可选的 note 字段，用来记录你对上一步工具结果的分析（note 不是工具参数）：
+   {{"tool": "<动作名>", "args": {{...}}, "note": {{"finding": "关键内容", "relevance": "与当前问题的关系", "next": "下一步动作"}}}}
+   在 read_lines 之后的下一次回复必须写 note，说明读到了什么、是否与目标相关、下一步做什么。
+7. 修改前，先找同一文件或相邻模块中功能类似的既有实现；若找到，对齐其返回结构、拆分粒度与错误处理方式，优先跟随该处既有写法，不要只比较最终输出文字。
+8. 回复以 {{ 开始、以 }} 结束；JSON 之外不要有任何字符。任务在下一则消息中给出。
 """
 
 
@@ -102,7 +112,7 @@ class LLMPolicy:
 
     def __init__(self, task, model=DEFAULT_MODEL, api_key="", base_url=DEFAULT_BASE_URL,
                  transport=None, temperature=0.0, max_tokens=4096, timeout=120,
-                 max_history=6, observation_limit=1200, notes_limit=4000,
+                 max_history=6, observation_limit=12000, notes_limit=4000,
                  read_repeat_warning=5, stale_edit_steps=10,
                  max_parse_attempts=2, max_dsml_retries=2,
                  input_price=0.0, output_price=0.0, log_path=None,
@@ -338,6 +348,7 @@ class LLMPolicy:
         searches = {}
         discovered = set()
         read_or_edited = set()
+        note_records = []
         last_edit_step = None
 
         for event in history:
@@ -349,6 +360,9 @@ class LLMPolicy:
             result = observation.get("result") if isinstance(observation, dict) else None
             result = result if isinstance(result, dict) else {}
             ok = self._observation_ok(observation)
+            note = event.get("note")
+            if isinstance(note, dict) and note:
+                note_records.append((step, note))
 
             if tool == "read_lines" and ok:
                 path = args.get("path") or result.get("path")
@@ -434,6 +448,16 @@ class LLMPolicy:
         unread = sorted(discovered - read_or_edited - set(edits))
         if unread:
             lines.append("- 搜索发现但尚未读取/修改：" + "，".join(unread[:8]))
+        if note_records:
+            lines.append("- 模型笔记（最近）：")
+            for note_step, note in note_records[-5:]:
+                fields = []
+                for key, label in (("finding", "发现"), ("relevance", "关联"),
+                                   ("next", "下一步")):
+                    if note.get(key):
+                        fields.append(f"{label}={note[key]}")
+                if fields:
+                    lines.append(f"  - step {note_step}：" + "；".join(fields))
         text = "\n".join(lines)
         if len(text) > self.notes_limit:
             text = text[: self.notes_limit] + "\n…（摘要已截断）"
@@ -522,7 +546,20 @@ class LLMPolicy:
         tool = data["tool"]
         if tool not in self.tools:
             raise ValueError(f"tool {tool!r} is not enabled for this run")
-        return Action(tool, self._normalize_args(data), PHASE_BY_TOOL.get(tool, ""), "")
+        return Action(tool, self._normalize_args(data), PHASE_BY_TOOL.get(tool, ""),
+                      "", self._normalize_note(data.get("note")))
+
+    @staticmethod
+    def _normalize_note(value):
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("note must be a JSON object")
+        note = {}
+        for key in ("about_step", "finding", "relevance", "next"):
+            if key in value and value[key] not in (None, ""):
+                note[key] = value[key]
+        return note or None
 
     def _cost(self, prompt_tokens, completion_tokens):
         return round(
@@ -704,7 +741,7 @@ def policy_from_env(task, model=None, env_path=ENV_PATH, transport=None,
         int(_first_env("LLM_MAX_HISTORY", default="6")))
     kwargs.setdefault(
         "observation_limit",
-        int(_first_env("LLM_OBSERVATION_LIMIT", default="1200")))
+        int(_first_env("LLM_OBSERVATION_LIMIT", default="12000")))
     kwargs.setdefault(
         "notes_limit",
         int(_first_env("LLM_NOTES_LIMIT", default="4000")))

@@ -70,7 +70,7 @@ def normalize_args(data):
             args = arguments
     if not isinstance(args, dict) or not args:
         loose = {key: value for key, value in data.items()
-                 if key not in {"tool", "args", "arguments"}}
+                 if key not in {"tool", "args", "arguments", "note"}}
         if loose:
             args = loose
     return args if isinstance(args, dict) else {}

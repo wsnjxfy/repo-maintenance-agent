@@ -39,6 +39,9 @@ class ToyV2DemoTests(unittest.TestCase):
         for name in ("summary.json", "trajectory.jsonl", "report.html", "final.patch"):
             self.assertTrue((self.run_dir / name).exists(), name)
 
+    def test_default_task_budget_is_sixty(self):
+        self.assertEqual(ToyTask().max_steps, 60)
+
     def test_patch_is_exported_and_contains_the_fix(self):
         patch = self.run_dir / "final.patch"
         self.assertTrue(patch.exists())

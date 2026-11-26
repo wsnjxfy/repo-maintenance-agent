@@ -1,4 +1,4 @@
-param([switch]$OpenReport, [int]$MaxSteps = 16)
+param([switch]$OpenReport, [int]$MaxSteps = 60)
 $ErrorActionPreference = 'Stop'
 
 # Keep Python stdio UTF-8 so Chinese progress lines do not hit cp1252 errors.

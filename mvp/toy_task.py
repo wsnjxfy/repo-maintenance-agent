@@ -36,7 +36,7 @@ class ToyTask:
     visibility: Visibility = VISIBILITY
     protocol: dict = field(default_factory=lambda: dict(PROTOCOL))
     run_prefix: str = "toyv2"
-    max_steps: int = 16
+    max_steps: int = 60
     python: str = sys.executable
     git: str = "git"
     runs_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[0] / "runs")

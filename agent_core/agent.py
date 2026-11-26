@@ -30,6 +30,7 @@ class Action:
     args: dict = field(default_factory=dict)
     phase: str = ""
     intent: str = ""
+    note: dict | None = None
 
 
 class Policy(Protocol):
@@ -39,7 +40,7 @@ class Policy(Protocol):
 
 
 class Agent:
-    def __init__(self, tools, max_steps=24, max_tool_errors=3):
+    def __init__(self, tools, max_steps=60, max_tool_errors=3):
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
         if max_tool_errors < 1:
@@ -89,7 +90,11 @@ class Agent:
                 except Exception as exc:
                     observation = {"ok": False, "tool": action.tool,
                                    "error": f"{type(exc).__name__}: {exc}", "kind": "tool"}
+                note = dict(action.note) if action.note else None
+                if note is not None and step > 1:
+                    note.setdefault("about_step", step - 1)
                 event = {"step": step, "phase": action.phase, "intent": action.intent,
+                         "note": note,
                          "action": {"tool": action.tool, "args": action.args},
                          "observation": observation,
                          "elapsed_ms": round((time.perf_counter() - started) * 1000)}

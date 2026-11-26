@@ -254,6 +254,7 @@ async function start() {
     model: $("model").value || null,
     max_steps: parseInt($("max-steps").value, 10) || null,
     max_actions: parseInt($("max-actions").value, 10) || 60,
+    observation_limit: parseInt($("observation-limit").value, 10) || null,
     budget_usd: parseFloat($("budget").value) || null,
   };
   $("error").textContent = "";

@@ -90,7 +90,7 @@ def run(task, policy=None, *, tools=None, policy_factory=None, output_root=None,
     root = Path(output_root) if output_root is not None else Path(
         getattr(task, "runs_root", Path("runs")))
     prefix = getattr(task, "run_prefix", "run")
-    max_steps = int(max_steps if max_steps is not None else getattr(task, "max_steps", 16))
+    max_steps = int(max_steps if max_steps is not None else getattr(task, "max_steps", 60))
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
     if max_actions is None:

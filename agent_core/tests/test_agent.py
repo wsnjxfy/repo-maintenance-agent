@@ -32,6 +32,12 @@ class SequencePolicy:
         return Action(self.tools[index], {}) if index < len(self.tools) else None
 
 
+class NotePolicy:
+    def next_action(self, history):
+        return Action("finish", {"reason": "done"},
+                      note={"finding": "done", "next": "finish"})
+
+
 class AgentContractTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="hj10-agent-")
@@ -46,6 +52,9 @@ class AgentContractTests(unittest.TestCase):
             history, status, reason = Agent(fake, max_steps=max_steps).run(
                 SequencePolicy(tools), self.path)
         return history, status, reason
+
+    def test_default_max_steps_is_sixty(self):
+        self.assertEqual(Agent(FakeTools([])).max_steps, 60)
 
     def test_tool_error_is_recoverable(self):
         history, status, _ = self.run_agent(
@@ -77,6 +86,16 @@ class AgentContractTests(unittest.TestCase):
             ["finish"])
         self.assertEqual(status, "completed")
         self.assertEqual(reason, "done")
+
+    def test_note_is_saved_in_trajectory_with_about_step(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            history, status, _ = Agent(FakeTools([{
+                "ok": True, "tool": "finish",
+                "result": {"finished": True, "accepted": None, "reason": "done"},
+            }]), max_steps=1).run(NotePolicy(), self.path)
+        self.assertEqual(status, "completed")
+        self.assertEqual(history[0]["note"]["finding"], "done")
+        self.assertNotIn("about_step", history[0]["note"])
 
     def test_dispatch_exception_becomes_a_recoverable_error(self):
         class RaisingTools:

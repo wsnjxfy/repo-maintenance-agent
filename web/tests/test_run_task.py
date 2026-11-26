@@ -16,7 +16,7 @@ class RunTaskTests(unittest.TestCase):
     def test_toy_scripted_resolves_and_records_tools_enabled(self):
         with tempfile.TemporaryDirectory() as temp:
             code = run_task.main(["--task", "toy", "--policy", "scripted",
-                                  "--output-dir", temp, "--max-steps", "16"])
+                                  "--output-dir", temp])
             self.assertEqual(code, 0)
             summary = sorted(Path(temp).glob("*/summary.json"))[-1]
             data = json.loads(summary.read_text(encoding="utf-8"))
@@ -24,6 +24,7 @@ class RunTaskTests(unittest.TestCase):
             self.assertIn("finish", data["tools_enabled"])
             self.assertEqual(data["toolset"], "toy-v2")
             self.assertEqual(data["max_actions"], 60)
+            self.assertEqual(data["max_steps"], 60)
             self.assertEqual(data["agent_version"], AGENT_VERSION)
             self.assertEqual(data["versions"]["agent"], AGENT_VERSION)
 

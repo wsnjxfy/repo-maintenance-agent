@@ -211,6 +211,8 @@ def _launch(record, config):
         cmd += ["--max-steps", str(config["max_steps"])]
     if config.get("max_actions"):
         cmd += ["--max-actions", str(config["max_actions"])]
+    if config.get("observation_limit"):
+        cmd += ["--observation-limit", str(config["observation_limit"])]
     if config.get("budget_usd"):
         cmd += ["--budget-usd", str(config["budget_usd"])]
     env = dict(os.environ)
@@ -303,8 +305,9 @@ class RunRequest(BaseModel):
     tools: list[str] = []
     policy: str = "scripted"
     model: str | None = None
-    max_steps: int | None = None
+    max_steps: int | None = 60
     max_actions: int = DEFAULT_MAX_ACTIONS
+    observation_limit: int | None = None
     budget_usd: float | None = None
 
 
@@ -385,6 +388,10 @@ def create_run(req: RunRequest):
                             detail=f"policy {req.policy!r} 不适用于 {req.task!r}")
     if req.max_actions < 1:
         raise HTTPException(status_code=400, detail="max_actions must be positive")
+    if req.max_steps is not None and req.max_steps < 1:
+        raise HTTPException(status_code=400, detail="max_steps must be positive")
+    if req.observation_limit is not None and req.observation_limit < 1:
+        raise HTTPException(status_code=400, detail="observation_limit must be positive")
     toolset = req.toolset or entry.toolset
     tools = _normalize_tools(entry, req.tools, toolset)
     with RUNS_LOCK:
@@ -397,6 +404,7 @@ def create_run(req: RunRequest):
                   "policy": req.policy,
                   "model": req.model, "max_steps": req.max_steps,
                   "max_actions": req.max_actions,
+                  "observation_limit": req.observation_limit,
                   "budget_usd": req.budget_usd,
                   "agent_version": AGENT_VERSION,
                   "prompt_version": PROMPT_VERSION if req.policy == "llm" else None,

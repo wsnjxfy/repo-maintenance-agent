@@ -76,6 +76,8 @@ def _build_policy(args, entry, task, names):
             retry_kwargs["max_parse_attempts"] = args.max_parse_attempts
         if args.max_dsml_retries is not None:
             retry_kwargs["max_dsml_retries"] = args.max_dsml_retries
+        if args.observation_limit is not None:
+            retry_kwargs["observation_limit"] = args.observation_limit
         return policy_from_env(
             task.problem, args.model, toolset=task.toolset, tools=names,
             workspace_hint=getattr(task, "workspace_hint", None),
@@ -93,12 +95,14 @@ def main(argv=None):
     parser.add_argument("--tools", help="Comma-separated tool subset (default: task default)")
     parser.add_argument("--policy", default="scripted")
     parser.add_argument("--model")
-    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--max-steps", type=int, default=60)
     parser.add_argument("--max-actions", type=int, default=DEFAULT_MAX_ACTIONS)
     parser.add_argument("--budget-usd", type=float)
     parser.add_argument("--max-total-tokens", type=int)
     parser.add_argument("--max-parse-attempts", type=int)
     parser.add_argument("--max-dsml-retries", type=int)
+    parser.add_argument("--observation-limit", type=int,
+                        help="Max characters per observation in the model history")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--no-llm-log", action="store_true")
     # Sphinx (and future data-backed tasks) path/interpreter overrides.

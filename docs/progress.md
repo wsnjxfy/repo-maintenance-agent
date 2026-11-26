@@ -359,3 +359,42 @@
 - 更新 `docs/interfaces.md` 的 repo toolset 說明與 SphinxTask 測試期望。
 - 測試：`experiments` 37、`web` 23、`tools` 34 全綠。
 
+## 2026-11-26 ｜ Prompt v9：traceback 不是完整範圍
+
+- `agent_core/llm.py`：`PROMPT_VERSION = "v9"`；SYSTEM_TEMPLATE 新規則要求修改函數前先用 `find_symbol` / `search_text` 搜尋同名或同模式實作。
+- `agent_core/tests/test_llm.py` 加回歸斷言；`mvp/tests/test_demo_llm.py` 的版本期望更新為 v9。
+- `docs/interfaces.md`、`notes/architecture.md` 同步版本與 changelog。
+
+## 2026-11-26 ｜ Prompt v10：每步 note
+
+- `Action` 新增 optional `note`；`LLMPolicy._parse()` 解析 `{finding, relevance, next}`，且不會把 note 混進 tool args。
+- `Agent` 把 note 寫入每個 `trajectory.jsonl` event，缺少 `about_step` 時自動補上一個 step。
+- `report_template.html` 在每個步驟詳情新增「模型笔记」，顯示 finding / relevance / next；沒有 note 時顯示「本步未记录 note」。
+- `PROMPT_VERSION = "v10"`；read_lines 後的下一次回覆必須附 note。
+- 測試：`agent_core` 46、`mvp` 12、`web` 23，全綠。
+
+## 2026-11-26 ｜ observation_limit 可從 Web / CLI 控制
+
+- `LLMPolicy` 的 `observation_limit` 原本已有 `.env` 控制；本次補上 `scripts/run_task.py --observation-limit`、Web 進階欄位、`RunRequest`/`web-run.json` config 與 `_launch` 命令列傳遞。
+- Web 會驗證 `observation_limit >= 1`；未指定時沿用 `.env`/預設 1200。
+- `observation_limit` 用於 `LLMPolicy._clip()`、`_read_lines_text()`、`_search_text()`、`_test_text()` 與 `_observation_text()`，進而影響 `_history_text()` 中每個 event 的 observation 大小。
+- `summary.context_policy` 會記錄實際使用的 `observation_limit`。
+- 測試：新增 read_lines 窗口可調、非法值拒絕、web 設定保存等測試。
+
+## 2026-11-26 ｜ Prompt v11：先對齊附近類似實作
+
+- `agent_core/llm.py`：`PROMPT_VERSION = "v11"`；新增規則「修改前先找同一文件或相鄰模組中功能類似的既有實作，對齊回傳結構、拆分粒度與錯誤處理方式，不要只比較最終輸出文字」。
+- 這是通用規則，不綁定 Sphinx 的 `assert_node` 或 punctuation。
+- `agent_core/tests/test_llm.py` 加 prompt 斷言；`mvp/tests/test_demo_llm.py` 的版本期望更新為 v11。
+
+## 2026-11-26 ｜ 預設步數 60、observation limit 12000
+
+- `Agent`、`run.py` fallback、`ToyTask`、`SphinxTask`、`mvp/demo.py`、`run-demo.ps1`、Web 表單/API、CLI 的 `max_steps` 預設改為 60。
+- `LLMPolicy`、`policy_from_env`、`.env.example`、Web 表單與文件範例的 `observation_limit` 預設改為 12000。
+- 測試同步：Agent 預設 60、LLMPolicy 預設 12000、ToyTask 預設 60、Web API/CLI 預設 60。
+
+## 2026-11-26 ｜ Prompt v12：從 traceback 抽函數名
+
+- `agent_core/llm.py`：`PROMPT_VERSION = "v12"`；規則 5 改成兩句：先從 traceback 的 `in <函数名>` 取出函數名並搜尋其所有定義，再用錯誤 pattern 補充；不要只搜外層函數名或錯誤 pattern。
+- `agent_core/tests/test_llm.py` 更新 prompt 斷言；`mvp/tests/test_demo_llm.py` 的版本期望更新為 v12。
+

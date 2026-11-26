@@ -30,9 +30,9 @@ trajectory 字段   ← agent.py（写）
 每次 run 的 `summary.json` 必须记录：
 
 ```json
-"versions": {"agent": "v1", "action": "v1", "tools": "v1", "prompt": "v8", "trajectory": "v1"},
+"versions": {"agent": "v1", "action": "v1", "tools": "v1", "prompt": "v12", "trajectory": "v1"},
 "agent_version": "v1",
-"prompt_version": "v8"
+"prompt_version": "v12"
 ```
 
 规则：
@@ -53,6 +53,7 @@ class Action:
     args: dict = field(default_factory=dict)
     phase: str = ""     # 可选元数据
     intent: str = ""    # 可选元数据
+    note: dict | None = None  # 可选：对上一次 observation 的分析
 ```
 
 最小合法 Action 只有两个字段：
@@ -63,7 +64,7 @@ class Action:
 
 ### 2.2 谁填 phase / intent
 
-**v1 决定：模型只输出 `tool` 与 `args`；`phase` 与 `intent` 由适配器按工具名映射生成。**
+**v1 决定：模型只输出 `tool`、`args` 与可选的 `note`；`phase` 与 `intent` 由适配器按工具名映射生成。**
 
 理由：
 
@@ -240,6 +241,7 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `llm` | object | `{model, prompt_tokens, completion_tokens, cost_usd, attempts, last_error, extra_actions}`；`attempts` 含重试次数，`last_error` 为最后一次解析失败原因（无失败则为 null），`extra_actions` 为同一回复里被忽略的多余动作数 |
+| `note` | object/null | 模型对上一步 observation 的结构化分析：`{about_step, finding, relevance, next}`；没有则为 null |
 
 ### 5.3 兼容规则
 
@@ -277,13 +279,13 @@ B：数据集 / Docker / harness      ← 不碰 agent 工具
 在现有字段基础上扩展，必填：
 
 ```json
-{"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 24,
+{"run_id": "...", "instance_id": "...", "model": "...", "max_steps": 60,
  "max_actions": 60,
- "versions": {"agent": "v1", "action": "v1", "tools": "v1", "prompt": "v8", "trajectory": "v1"},
- "agent_version": "v1", "prompt_version": "v8",
+ "versions": {"agent": "v1", "action": "v1", "tools": "v1", "prompt": "v12", "trajectory": "v1"},
+ "agent_version": "v1", "prompt_version": "v12",
  "toolset": "toy-v2", "tools_enabled": ["list_files", "..."],
  "tool_versions": {"list_files": 0, "read_lines": 0, "finish": 0},
- "context_policy": {"max_history": 6, "observation_limit": 1200,
+ "context_policy": {"max_history": 6, "observation_limit": 12000,
                     "notes_limit": 4000, "read_repeat_warning": 5,
                     "stale_edit_steps": 10},
  "retry_policy": {"max_parse_attempts": 2, "max_dsml_retries": 2},
@@ -384,6 +386,11 @@ def test_bad_tool_call_becomes_error_observation(adapter):
 | 2026-11-26 | v1 | `max_actions` 成为 run 参数与 web 表单栏位（默认 60）；`run.py` 将它覆盖进 `task.protocol` 并在 summary 记录实际值；CLI 增加 `--max-actions` | 兼容（新增参数与 summary 字段） |
 | 2026-11-26 | v1 | `prompt` 升 v8：加入持久运行摘要、重复读取/久未修改警告、read_lines 与测试 observation 的摘要化；`max_history`／`observation_limit`／`notes_limit`／loop guard 可通过 `LLM_*` 环境变量调整 | 兼容（prompt 行为与 context 設定改變） |
 | 2026-11-26 | v1 | 新增 `agent_core.AGENT_VERSION`（v1）；`summary.versions.agent`、`summary.agent_version` 与 web 历史表记录并显示 agent 版本；`summary.context_policy` 记录 context 参数 | 兼容（新增欄位） |
+| 2026-11-26 | v1 | `prompt` 升 v9：加入「traceback 只是症状入口」规则，要求修改函数前用 `find_symbol` / `search_text` 检查同名或同模式实现 | 兼容（prompt 行为改变） |
+| 2026-11-26 | v1 | `prompt` 升 v10：action 可带可选 `note`（finding/relevance/next），read_lines 后下一次回复必须写 note；Agent 将 note 写入 trajectory，报告每步显示 | 兼容（新增可选 action 欄位与报告区块） |
+| 2026-11-26 | v1 | `prompt` 升 v11：修改前先找同一文件或相邻模块中功能类似的既有实现，对齐其返回结构、拆分粒度与错误处理方式，不要只比较最终输出文字 | 兼容（prompt 行为改变） |
+| 2026-11-26 | v1 | 默认 `max_steps` 改为 60（Agent / ToyTask / SphinxTask / Web / CLI）；默认 `observation_limit` 改为 12000（LLMPolicy / `.env.example` / Web 表单） | 兼容（默认值改变） |
+| 2026-11-26 | v1 | `prompt` 升 v12：从 traceback 抽取函数名并搜索其所有定义，再用错误 pattern 补充；不要只搜外层函数名或错误 pattern | 兼容（prompt 行为改变） |
 
 ## 10. 常见事故（本文件要防的东西）
 
