@@ -64,6 +64,8 @@ def _build_policy(args, entry, task, names):
     if policy == "none":
         return EmptyPolicy(), None
     if policy == "reference":
+        if entry.reference_policy is not None:
+            return entry.reference_policy(task, _options(args)), None
         from tasks.registry import _sphinx_paths
         from experiments.sphinx_7462.oracle import ReferencePatchPolicy
         patch = _sphinx_paths(_options(args))["reference_patch"]

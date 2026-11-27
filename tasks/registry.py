@@ -12,6 +12,7 @@ across the task packages, which the restricted layers may not.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 import os
 import shutil
@@ -20,6 +21,7 @@ import sys
 from typing import Callable
 
 from agent_core.llm import ENV_PATH, load_env
+from experiments.verified_samples.specs import SAMPLES
 from tools.toolsets import tool_names
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +50,7 @@ class TaskEntry:
     preflight: Callable
     edit_tools: tuple = ("replace_text", "apply_patch", "create_file", "edit_lines")
     notes: str = ""
+    reference_policy: Callable | None = None
 
     def asdict(self):
         return {
@@ -189,6 +192,50 @@ def _preflight_sphinx(options):
     return [c.asdict() for c in checks]
 
 
+# --- SWE-bench Verified development samples --------------------------------
+
+def _sample_paths(spec, options):
+    data_dir = Path(options.get("data_dir") or REPO_ROOT / "data" / spec.instance_id)
+    python = Path(options.get("python") or _venv_python(data_dir / ".venv"))
+    return data_dir, python
+
+
+def _build_sample(spec, options):
+    from experiments.verified_samples.task import SampleTask
+    data_dir, python = _sample_paths(spec, options)
+    return SampleTask(spec, data_dir, python, _git_value(options))
+
+
+def _preflight_sample(spec, options):
+    data_dir, python = _sample_paths(spec, options)
+    names = ["source.tar.gz", "task-input.json", "freeze.json"]
+    if options.get("policy") == "reference":
+        names.append("reference.patch")
+    checks = [Check(name, (data_dir / name).is_file(), str(data_dir / name)) for name in names]
+    checks.extend([Check("样例 Python 环境", python.is_file(), str(python)), _git_check(options)])
+    return [check.asdict() for check in checks]
+
+
+def _sample_reference(task, _options):
+    from experiments.sphinx_7462.oracle import ReferencePatchPolicy
+    return ReferencePatchPolicy(task.reference_patch())
+
+
+def _sample_entry(spec):
+    return TaskEntry(
+        task_id=spec.task_id,
+        title=spec.title,
+        toolset="repo-v1",
+        default_tools=["apply_patch", "finish"],
+        policies=["none", "reference"],
+        build=partial(_build_sample, spec),
+        preflight=partial(_preflight_sample, spec),
+        edit_tools=("apply_patch",),
+        notes=spec.notes,
+        reference_policy=_sample_reference,
+    )
+
+
 # --- the catalog ------------------------------------------------------------
 
 TASKS = {
@@ -213,6 +260,9 @@ TASKS = {
         notes="需要 data/sphinx-doc__sphinx-7462/ 四个档与 py3.9 venv；先用 reference 冒烟。",
     ),
 }
+
+
+TASKS.update({spec.task_id: _sample_entry(spec) for spec in SAMPLES.values()})
 
 
 def get_entry(task_id):
