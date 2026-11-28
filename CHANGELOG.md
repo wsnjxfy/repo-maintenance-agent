@@ -2,6 +2,33 @@
 
 每次更新单独一节，最新的放在最上面。新增记录署名统一填 `hxy`。每个文件单独一行，用仓库相对路径，写清是新增、修改还是删除，以及它在这次更新中的作用。提交或合并后补上链接。实验过程见[进度记录](docs/progress.md)。
 
+## 2026-11-29 接入 15 仓库 dev/test 样例
+
+`hxy` · 本地验证
+
+将 10 道开发题和 5 道留测题接入统一 CLI 与 Web。逐题准备独立的本机 Python 环境，核对冻结源码导入，并验证 CLI 与 Web 的默认 llm 预检。15 道样例均未启动，原版与参考补丁的基准校准待做。
+
+| 变更 | 文件 | 这次改动的作用 |
+|---|---|---|
+| 新增 | `experiments/repo_split/__init__.py` | 声明本地仓库划分任务包。 |
+| 新增 | `experiments/repo_split/specs.py` | 校验仓库分组并定义入口与源码目录。 |
+| 新增 | `experiments/repo_split/catalog.json` | 固定 15 题的仓库、版本、数据来源和分组。 |
+| 新增 | `experiments/repo_split/runtime-recipes.json` | 记录各题的解释器版本和依赖版本。 |
+| 新增 | `experiments/repo_split/prepare.py` | 在本地下载固定材料并分离解题端和评测端输入。 |
+| 新增 | `experiments/repo_split/runtime.py` | 规范化内部符号链接，生成本机源码导入证据。 |
+| 新增 | `experiments/repo_split/task.py` | 构建解题工作区，校验控制端评测材料。 |
+| 新增 | `experiments/repo_split/evaluate.py` | 独立应用候选和测试补丁，记录导入与评分。 |
+| 新增 | `experiments/repo_split/worker.py` | 在本机环境按冻结标签选择用例和记录结果。 |
+| 新增 | `experiments/repo_split/tests/test_evaluate.py` | 用合成夹具核对链接物化及评测副本隔离。 |
+| 新增 | `experiments/repo_split/tests/test_catalog.py` | 验证公开清单和缺少本地材料时的预检。 |
+| 新增 | `experiments/repo_split/README.md` | 记录分组入口、环境和评测边界。 |
+| 修改 | `tasks/registry.py` | 注册 15 道本地题及运行前检查。 |
+| 修改 | `scripts/run_task.py` | 提供仅检查的 CLI 预检，约束本地留测工具集。 |
+| 修改 | `tools/toolsets.py` | 增加解题阶段不执行宿主代码的工具集。 |
+| 修改 | `web/server.py` | 在 Web 启动入口校验固定工具集。 |
+| 修改 | `web/static/app.js` | 展示开发和留测分组及固定工具集。 |
+
+
 ## 2026-11-28 接入四个 SWE-bench Verified 开发样例
 
 `hxy` · [hxy 分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/hxy/)

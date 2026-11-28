@@ -126,6 +126,7 @@ function onTaskChange() {
   $("task-notes").textContent = entry.notes || "";
   fillPolicies(entry);
   const toolset = $("toolset");
+  toolset.disabled = Boolean(entry.locked_toolset);
   const hasTaskToolset = (CATALOG.toolsets || []).some((t) => t.name === entry.toolset);
   if (hasTaskToolset) toolset.value = entry.toolset;
   else if (!toolset.value && (CATALOG.toolsets || []).length) {
@@ -315,14 +316,29 @@ function openHistoryRun(runId) {
   startStream(runId);
 }
 
+function fillTasks() {
+  const select = $("task");
+  const groups = new Map();
+  for (const [key, label] of [["dev", "dev（开发集）"], ["test", "test（留测集）"]]) {
+    const group = document.createElement("optgroup");
+    group.label = label;
+    groups.set(key, group);
+  }
+  for (const task of CATALOG.tasks) {
+    const option = document.createElement("option");
+    option.value = task.task_id;
+    option.textContent = task.title;
+    (groups.get(task.group) || select).append(option);
+  }
+  for (const group of groups.values()) {
+    if (group.childElementCount) select.append(group);
+  }
+}
+
 async function init() {
   CATALOG = await getJSON("/api/catalog");
-  const sel = $("task");
-  for (const t of CATALOG.tasks) {
-    const o = document.createElement("option");
-    o.value = t.task_id; o.textContent = t.title; sel.append(o);
-  }
-  sel.addEventListener("change", onTaskChange);
+  fillTasks();
+  $("task").addEventListener("change", onTaskChange);
   const toolsetSel = $("toolset");
   for (const ts of CATALOG.toolsets || []) {
     const o = document.createElement("option");

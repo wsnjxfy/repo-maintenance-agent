@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "dataset_snapshots": {
+    "verified": {
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+      "split": "test",
+      "file_url": "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified/resolve/c104f840cc67f8b6eec6f759ebc8b2693d585d4a/data/test-00000-of-00001.parquet",
+      "sha256": "a45b1fe4e2f0c8390b2b2938ac83e92ed5979000856808f3679c07812e9e6dcd"
+    },
+    "live": {
+      "dataset": "SWE-bench-Live/SWE-bench-Live",
+      "revision": "babb27e45e072219195db7a744bbf0d3c1a36e56",
+      "split": "lite",
+      "file_url": "https://huggingface.co/datasets/SWE-bench-Live/SWE-bench-Live/resolve/babb27e45e072219195db7a744bbf0d3c1a36e56/data/lite-00000-of-00001.parquet",
+      "sha256": "a6375fbe7a55cb9630b6c3ceee980d504b9dac9351bd35f5c62cb965ac396ebc"
+    }
+  },
+  "instances": [
+    {
+      "split": "dev",
+      "repo": "pallets/flask",
+      "instance_id": "pallets__flask-5014",
+      "purpose": "空名称 Blueprint 的创建应报错",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 289,
+      "base_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "f2p_count": 1,
+      "p2p_count": 59
+    },
+    {
+      "split": "dev",
+      "repo": "psf/requests",
+      "instance_id": "psf__requests-2931",
+      "purpose": "发送含二进制内容的请求体",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 295,
+      "base_commit": "5f7a3a74aab1625c2bb65f643197ee885e3da576",
+      "f2p_count": 1,
+      "p2p_count": 84
+    },
+    {
+      "split": "dev",
+      "repo": "pytest-dev/pytest",
+      "instance_id": "pytest-dev__pytest-5631",
+      "purpose": "收集涉及数组替换的测试时出现 ValueError",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 334,
+      "base_commit": "cb828ebe70b4fa35cd5f9a7ee024272237eab351",
+      "f2p_count": 1,
+      "p2p_count": 15
+    },
+    {
+      "split": "dev",
+      "repo": "pylint-dev/pylint",
+      "instance_id": "pylint-dev__pylint-8898",
+      "purpose": "含逗号的命名规则正则表达式被错误处理",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 329,
+      "base_commit": "1f8c4d9eb185c16a2c1d881c054f015e1c2eb334",
+      "f2p_count": 1,
+      "p2p_count": 18
+    },
+    {
+      "split": "dev",
+      "repo": "sphinx-doc/sphinx",
+      "instance_id": "sphinx-doc__sphinx-10673",
+      "purpose": "目录树引用生成索引页时的处理",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 386,
+      "base_commit": "f35d2a6cc726f97d0e859ca7a0e1729f7da8a6c8",
+      "f2p_count": 1,
+      "p2p_count": 9
+    },
+    {
+      "split": "dev",
+      "repo": "sympy/sympy",
+      "instance_id": "sympy__sympy-20438",
+      "purpose": "集合包含关系判断",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 476,
+      "base_commit": "33b47e4bd60e2302e42616141e76285038b724d6",
+      "f2p_count": 2,
+      "p2p_count": 93
+    },
+    {
+      "split": "dev",
+      "repo": "django/django",
+      "instance_id": "django__django-12155",
+      "purpose": "视图文档字符串首行影响文档渲染",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 73,
+      "base_commit": "e8fcdaad5c428878d0a5d6ba820d957013f75595",
+      "f2p_count": 1,
+      "p2p_count": 6
+    },
+    {
+      "split": "dev",
+      "repo": "scikit-learn/scikit-learn",
+      "instance_id": "scikit-learn__scikit-learn-25102",
+      "purpose": "转换器输出 DataFrame 时保留 dtype",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 373,
+      "base_commit": "f9a1cf072da9d7375d6c2163f68a6038b13b310f",
+      "f2p_count": 2,
+      "p2p_count": 59
+    },
+    {
+      "split": "dev",
+      "repo": "pdm-project/pdm",
+      "instance_id": "pdm-project__pdm-3250",
+      "purpose": "依赖组名称规范化",
+      "dataset": "SWE-bench-Live/SWE-bench-Live",
+      "official_split": "lite",
+      "parquet_row_index": 95,
+      "base_commit": "5d3779ffe2709fbdb5bff1b4f0d33ef2c8c617d9",
+      "f2p_count": 1,
+      "p2p_count": 915
+    },
+    {
+      "split": "dev",
+      "repo": "dynaconf/dynaconf",
+      "instance_id": "dynaconf__dynaconf-1241",
+      "purpose": "合并逗号分隔的配置值时推断类型",
+      "dataset": "SWE-bench-Live/SWE-bench-Live",
+      "official_split": "lite",
+      "parquet_row_index": 228,
+      "base_commit": "105e6312f8ce3414ba0bebf88ad6e35b3953df38",
+      "f2p_count": 1,
+      "p2p_count": 27
+    },
+    {
+      "split": "test",
+      "repo": "astropy/astropy",
+      "instance_id": "astropy__astropy-13033",
+      "purpose": "TimeSeries 缺必需列时的异常信息",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 1,
+      "base_commit": "298ccb478e6bf092953bca67a3d29dc6c35f6752",
+      "f2p_count": 1,
+      "p2p_count": 20
+    },
+    {
+      "split": "test",
+      "repo": "matplotlib/matplotlib",
+      "instance_id": "matplotlib__matplotlib-20859",
+      "purpose": "在 SubFigure 上添加图例",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 258,
+      "base_commit": "64619e53e9d0ed417daba287ac0d3a06943a54d5",
+      "f2p_count": 1,
+      "p2p_count": 88
+    },
+    {
+      "split": "test",
+      "repo": "pydata/xarray",
+      "instance_id": "pydata__xarray-6938",
+      "purpose": "交换维度时意外修改原对象",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 315,
+      "base_commit": "c4e40d991c28be51de9ac560ce895ac7f9b14924",
+      "f2p_count": 1,
+      "p2p_count": 430
+    },
+    {
+      "split": "test",
+      "repo": "mwaskom/seaborn",
+      "instance_id": "mwaskom__seaborn-3187",
+      "purpose": "大数值范围下的图例标签",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "official_split": "test",
+      "parquet_row_index": 288,
+      "base_commit": "22cdfb0c93f8ec78492d87edb810f10cb7f57a31",
+      "f2p_count": 2,
+      "p2p_count": 248
+    },
+    {
+      "split": "test",
+      "repo": "jazzband/tablib",
+      "instance_id": "jazzband__tablib-613",
+      "purpose": "加载 ODS 文件时的值解析错误",
+      "dataset": "SWE-bench-Live/SWE-bench-Live",
+      "official_split": "lite",
+      "parquet_row_index": 200,
+      "base_commit": "70775bc922602ae535e0b2e525f6926030334ab8",
+      "f2p_count": 1,
+      "p2p_count": 163
+    }
+  ]
+}

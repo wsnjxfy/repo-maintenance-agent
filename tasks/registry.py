@@ -21,6 +21,7 @@ import sys
 from typing import Callable
 
 from agent_core.llm import ENV_PATH, load_env
+from experiments.repo_split.specs import PACK_NAME, TOOLSET as SPLIT_TOOLSET, load_specs
 from experiments.verified_samples.specs import SAMPLES
 from tools.toolsets import tool_names
 
@@ -51,6 +52,8 @@ class TaskEntry:
     edit_tools: tuple = ("replace_text", "apply_patch", "create_file", "edit_lines")
     notes: str = ""
     reference_policy: Callable | None = None
+    group: str | None = None
+    locked_toolset: bool = False
 
     def asdict(self):
         return {
@@ -60,6 +63,8 @@ class TaskEntry:
             "default_tools": list(self.default_tools),
             "policies": list(self.policies),
             "notes": self.notes,
+            "group": self.group,
+            "locked_toolset": self.locked_toolset,
         }
 
 
@@ -243,6 +248,56 @@ def _sample_entry(spec):
     )
 
 
+# --- local repository development and holdout split ------------------------
+
+DEFAULT_REPO_SPLIT = REPO_ROOT / "data" / PACK_NAME
+
+
+def _build_split_task(spec, options):
+    from experiments.repo_split.task import RepoSplitTask
+    return RepoSplitTask(spec, options.get("data_dir") or DEFAULT_REPO_SPLIT,
+                         _git_value(options), python=options.get("python"))
+
+
+def _preflight_split(spec, options):
+    checks = [_git_check(options)]
+    try:
+        task = _build_split_task(spec, options)
+        detail = "已从冻结源码副本导入项目和 pytest"
+        if task.spec.native:
+            detail += "。Windows 使用兼容的 wheel 构建文件，原版／参考校准待做"
+        checks.append(Check("独立 Python 环境与源码导入", True, detail))
+        checks.append(_python_has_pytest(task.python))
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
+        checks.append(Check("独立 Python 环境与源码导入", False, f"{type(exc).__name__}: {exc}"))
+    else:
+        try:
+            task.evaluation_assets()
+        except (OSError, ValueError, KeyError) as exc:
+            checks.append(Check("控制端独立评测材料", False, type(exc).__name__))
+        else:
+            checks.append(Check("控制端独立评测材料", True, "已核对冻结材料校验值"))
+    if options.get("policy") == "llm":
+        checks += _env_keys_present(require_prices=bool(options.get("budget_usd")))
+    return [c.asdict() for c in checks]
+
+
+def _split_entry(spec):
+    return TaskEntry(
+        task_id=spec.task_id,
+        title=spec.task_id.split("-", 1)[1],
+        toolset=SPLIT_TOOLSET,
+        default_tools=tool_names(SPLIT_TOOLSET),
+        policies=["none", "reference", "llm"],
+        build=partial(_build_split_task, spec),
+        preflight=partial(_preflight_split, spec),
+        notes="评测材料仅由控制端读取。留测仓库请在流程和预算固定后运行。",
+        reference_policy=_sample_reference,
+        group=spec.group,
+        locked_toolset=True,
+    )
+
+
 # --- the catalog ------------------------------------------------------------
 
 TASKS = {
@@ -271,6 +326,7 @@ TASKS = {
 
 
 TASKS.update({spec.task_id: _sample_entry(spec) for spec in SAMPLES.values()})
+TASKS.update({spec.task_id: _split_entry(spec) for spec in load_specs()})
 
 
 def get_entry(task_id):

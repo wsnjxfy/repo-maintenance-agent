@@ -348,6 +348,8 @@ def preflight(task_id: str, policy: str = "scripted", budget_usd: float | None =
 
 def _normalize_tools(entry, requested, toolset=None):
     toolset = toolset or entry.toolset
+    if entry.locked_toolset and toolset != entry.toolset:
+        raise HTTPException(status_code=400, detail=f"这个任务固定使用工具集 {entry.toolset!r}")
     try:
         allowed = tool_names(toolset)
     except ValueError as exc:

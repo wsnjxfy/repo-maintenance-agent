@@ -52,6 +52,12 @@ TOOLSETS = {
     },
 }
 
+# No repository subprocesses run during solve for tasks with local holdout material.
+TOOLSETS["repo-edit"] = {
+    "tools": tuple(name for name in TOOLSETS["repo-v2"]["tools"]
+                   if not TOOL_SPECS[name]["executes_code"]),
+}
+
 DEFAULT_TOOLSET = "toy-v2"
 
 

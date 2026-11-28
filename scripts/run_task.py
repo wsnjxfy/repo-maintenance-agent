@@ -16,6 +16,7 @@ Examples::
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -94,6 +95,7 @@ def main(argv=None):
     parser.add_argument("--tools", help="Comma-separated tool subset (default: task default)")
     parser.add_argument("--policy", default="scripted")
     parser.add_argument("--model")
+    parser.add_argument("--preflight", action="store_true", help="Check configuration and exit without a run")
     parser.add_argument("--max-steps", type=int, default=60)
     parser.add_argument("--max-actions", type=int, default=DEFAULT_MAX_ACTIONS)
     parser.add_argument("--budget-usd", type=float)
@@ -117,7 +119,15 @@ def main(argv=None):
 
     try:
         entry = get_entry(args.task)
+        if args.preflight:
+            if args.policy not in entry.policies:
+                parser.error(f"policy {args.policy!r} is not valid for {entry.task_id!r}")
+            checks = entry.preflight(_options(args))
+            print(json.dumps({"task": entry.task_id, "checks": checks}))
+            return 0 if checks and all(check["ok"] for check in checks) else 1
         toolset = args.toolset or entry.toolset
+        if entry.locked_toolset and toolset != entry.toolset:
+            parser.error(f"task {entry.task_id!r} requires toolset {entry.toolset!r}")
         allowed = tool_names(toolset)
         if args.tools:
             names = validate_tool_names(
