@@ -2,6 +2,29 @@
 
 每次更新单独一节，最新的放在最上面。新增记录署名统一填 `hxy`。每个文件单独一行，用仓库相对路径，写清是新增、修改还是删除，以及它在这次更新中的作用。提交或合并后补上链接。实验过程见[进度记录](docs/progress.md)。
 
+## 2026-11-28 接入四个 SWE-bench Verified 开发样例
+
+`hxy` · [hxy 分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/hxy/)
+
+四题通过统一 Web 和 CLI 入口提供 `none`、`reference`、`llm`。每题有独立的公开需求检查和回归检查。数据、参考补丁和运行产物保留在本地。
+
+| 变更 | 文件 | 这次改动的作用 |
+|---|---|---|
+| 新增 | `experiments/verified_samples/README.md` | 记录四题行为、环境准备和三种策略的入口。 |
+| 新增 | `experiments/verified_samples/__init__.py` | 声明 Verified 开发样例包。 |
+| 新增 | `experiments/verified_samples/checks/flask_5014.py` | 检查空名称 Blueprint 被拒绝及非空名称仍可创建。 |
+| 新增 | `experiments/verified_samples/checks/sympy_23262.py` | 检查 lambdify 的单元素和双元素元组行为。 |
+| 新增 | `experiments/verified_samples/checks/pytest_10051.py` | 检查 caplog.clear() 后两种日志查询同步及原有捕获行为。 |
+| 新增 | `experiments/verified_samples/checks/pylint_7080.py` | 检查递归扫描是否遵守 ignore-paths。 |
+| 新增 | `experiments/verified_samples/evaluate.py` | 在独立副本应用候选补丁并记录公开检查。 |
+| 新增 | `experiments/verified_samples/prepare.py` | 准备固定样例材料，处理 Windows 发布目录的瞬时占用。 |
+| 新增 | `experiments/verified_samples/specs.py` | 记录四题 ID、基线和专用 Python 依赖。 |
+| 新增 | `experiments/verified_samples/task.py` | 实现样例工作区准备和统一评测入口。 |
+| 新增 | `experiments/verified_samples/worker.py` | 执行公开检查并核对源码导入来源。 |
+| 修改 | `scripts/run_task.py` | 通过任务自身的参考策略处理 reference。 |
+| 修改 | `tasks/registry.py` | 注册四题和 llm 预检，为模型提供基本定位工具。 |
+| 修改 | `CHANGELOG.md` | 记录四题接入范围。 |
+
 ## 2026-11-20 修复 Windows CI 的评测路径误判
 
 `hxy` · 已提交 · [hxy 分支提交记录](https://github.com/wsnjxfy/repo-maintenance-agent/commits/hxy/)

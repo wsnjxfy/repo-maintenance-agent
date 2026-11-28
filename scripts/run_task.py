@@ -64,10 +64,9 @@ def _build_policy(args, entry, task, names):
     if policy == "none":
         return EmptyPolicy(), None
     if policy == "reference":
-        from tasks.registry import _sphinx_paths
-        from experiments.sphinx_7462.oracle import ReferencePatchPolicy
-        patch = _sphinx_paths(_options(args))["reference_patch"]
-        return ReferencePatchPolicy(patch), None
+        if entry.reference_policy is None:
+            raise ValueError(f"task {entry.task_id!r} has no reference policy")
+        return entry.reference_policy(task, _options(args)), None
 
     # llm: build lazily so llm_calls.jsonl lands inside the run directory.
     def factory(run_dir, task):
